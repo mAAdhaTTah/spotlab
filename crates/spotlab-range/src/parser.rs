@@ -69,6 +69,17 @@ pub(super) fn range(input: &mut &str) -> winnow::Result<Vec<(String, RangeEntry)
     .parse_next(input)
 }
 
+/// Parse a single combo token, requiring it to consume the entire input.
+///
+/// Used by [`super::Range::from_pairs`] to validate a structured combo against the same
+/// grammar [`combo`] enforces inside a range string, returning the canonicalized combo
+/// (e.g. `AKs`) on success.
+pub(super) fn parse_combo(input: &str) -> Result<String, super::RangeParseError> {
+    combo
+        .parse(input.trim())
+        .map_err(|e| super::RangeParseError::Invalid(e.to_string()))
+}
+
 /// Resolve a 4-character hand token (e.g. `AsKd`) into its combo (e.g. `AKo`).
 pub(super) fn hand_to_combo(hand: &str) -> String {
     let (rank_one, suit_one, rank_two, suit_two) =
