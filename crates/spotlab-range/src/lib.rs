@@ -121,9 +121,11 @@ impl Range {
     /// Frequency for a 4-character hand token (e.g. `AsKd`), resolving it to its
     /// combo (e.g. `AKo`) first, or `0.0` when the combo is absent.
     ///
-    /// This is the `(range_string, hand) -> f64` lookup that unblocks #304. It has no
-    /// in-tree caller yet — #304 itself is out of scope — hence `allow(dead_code)`.
-    #[allow(dead_code)]
+    /// This `(range_string, hand) -> f64` lookup is currently exercised only by tests
+    /// (range round-trip / membership checks) and retained as part of the `Range` API
+    /// for future production callers; #304's deal path uses `frequencies()` /
+    /// `to_combo_frequencies()` instead.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn hand_frequency(&self, hand: &str) -> f64 {
         self.entries
             .get(&parser::hand_to_combo(hand))
