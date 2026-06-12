@@ -177,45 +177,51 @@ const chunk = (arr: string[], size: number) =>
     arr.slice(i * size, i * size + size),
   );
 
-const Combo: FC<{
-  combo: string;
+type ComboHandlers = {
   onClick?: (combo: string) => void;
+  onMouseDown?: (combo: string) => void;
+  onMouseEnter?: (combo: string) => void;
   comboStyle?: (combo: string) => CSSProperties;
-}> = ({ combo, onClick, comboStyle }) => {
+};
+
+const Combo: FC<{ combo: string } & ComboHandlers> = ({
+  combo,
+  onClick,
+  onMouseDown,
+  onMouseEnter,
+  comboStyle,
+}) => {
   return (
     <div
-      className="border border-solid border-slate-800 inline-block overflow-hidden w-[7.691%] text-base cursor-pointer before:float-left before:pt-[100%] before:content-normal"
+      className="aspect-square w-[7.691%] overflow-hidden border border-border font-mono text-xs font-semibold"
       style={comboStyle?.(combo)}
       onClick={() => onClick?.(combo)}
+      onMouseDown={() => onMouseDown?.(combo)}
+      onMouseEnter={() => onMouseEnter?.(combo)}
     >
-      <div className="h-full w-full flex flex-col items-center justify-center">
+      <div className="flex h-full w-full flex-col items-center justify-center">
         <div data-combo={combo}>{combo}</div>
       </div>
     </div>
   );
 };
 
-const Row: FC<{
-  row: string[];
-  onClick?: (combo: string) => void;
-  comboStyle?: (combo: string) => CSSProperties;
-}> = ({ row, onClick, comboStyle }) => (
-  <div className="flex flex-row flex-nowrap overflow-hidden">
+const Row: FC<{ row: string[] } & ComboHandlers> = ({ row, ...handlers }) => (
+  <div className="flex flex-row flex-nowrap">
     {row.map((combo, j) => (
-      <Combo key={j} combo={combo} onClick={onClick} comboStyle={comboStyle} />
+      <Combo key={j} combo={combo} {...handlers} />
     ))}
   </div>
 );
 
-export const HandMatrix: FC<{
-  className?: string;
-  onClick?: (combo: string) => void;
-  comboStyle?: (combo: string) => CSSProperties;
-}> = ({ className, onClick, comboStyle }) => {
+export const HandMatrix: FC<{ className?: string } & ComboHandlers> = ({
+  className,
+  ...handlers
+}) => {
   return (
     <div className={className}>
       {chunk(combos, 13).map((row, i) => (
-        <Row key={i} row={row} onClick={onClick} comboStyle={comboStyle} />
+        <Row key={i} row={row} {...handlers} />
       ))}
     </div>
   );
