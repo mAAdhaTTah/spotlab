@@ -118,6 +118,14 @@ impl Range {
         Ok(Self { entries })
     }
 
+    /// An empty range is a distinct, meaningful state from `None` ("no range set") on the
+    /// wire, but for dealing purposes it is equivalent: a range with zero combos contributes
+    /// nothing to the weighted pick, so callers that must deal from a range (drill
+    /// validation, sampling) treat it the same as absent.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Frequency for a 4-character hand token (e.g. `AsKd`), resolving it to its
     /// combo (e.g. `AKo`) first, or `0.0` when the combo is absent.
     ///
