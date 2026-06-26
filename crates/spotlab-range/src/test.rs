@@ -3,10 +3,39 @@ use rstest::rstest;
 
 use crate::tree::range::Range;
 
+// #558
+#[rstest]
+fn suitless_combo_in_full_range_should_not_be_dropped() {
+    let range = "AA,KK,QQ,JJ,TT,99,88:0.5,AK,AQ,AJs,ATs,A9s,A5s,A4s,KQs,KQo:0.5,KJs,KTs,QJs,QTs:0.5,76s:0.25,65s:0.25,54s:0.25";
+    let parsed = Range::parse(range).unwrap();
+    assert_eq!(
+        parsed.hand_frequency("AhKh"),
+        1.0,
+        "AK suited should be in range"
+    );
+    assert_eq!(
+        parsed.hand_frequency("AhKd"),
+        1.0,
+        "AK offsuit should be in range"
+    );
+    assert_eq!(
+        parsed.hand_frequency("AhQh"),
+        1.0,
+        "AQ suited should be in range"
+    );
+    assert_eq!(
+        parsed.hand_frequency("AhQd"),
+        1.0,
+        "AQ offsuit should be in range"
+    );
+}
+
 #[rstest]
 #[case::pair("QQ", "QhQd", 1.0)]
 #[case::suited("AKs", "AhKh", 1.0)]
 #[case::offsuit("AKo", "AhKd", 1.0)]
+#[case::suitless_suited("AK", "AhKh", 1.0)]
+#[case::suitless_offsuit("AK", "AhKd", 1.0)]
 #[case::with_frequency("AKs:0.75", "AhKh", 0.75)]
 #[case::absent_combo("AKs", "AhKd", 0.0)]
 #[case::absent_from_empty("", "AhKh", 0.0)]

@@ -38,7 +38,7 @@ pub(super) fn frequency_text(input: &mut &str) -> winnow::Result<String> {
         .parse_next(input)
 }
 
-pub(super) fn range_entry(input: &mut &str) -> winnow::Result<(String, RangeEntry)> {
+pub(super) fn range_entry(input: &mut &str) -> winnow::Result<Vec<(String, RangeEntry)>> {
     seq!(combo, opt(preceded(":", frequency_text)))
         .map(|(combo, frequency)| {
             let raw = frequency.unwrap_or_else(|| "1".to_string());
@@ -47,9 +47,32 @@ pub(super) fn range_entry(input: &mut &str) -> winnow::Result<(String, RangeEntr
             let weight = raw
                 .parse()
                 .expect("frequency_text guarantees a parseable f64");
-            (combo, RangeEntry { weight, raw })
+
+            expand_combo(&combo)
+                .into_iter()
+                .map(|key| {
+                    (
+                        key,
+                        RangeEntry {
+                            weight,
+                            raw: raw.clone(),
+                        },
+                    )
+                })
+                .collect()
         })
         .parse_next(input)
+}
+
+fn expand_combo(combo: &str) -> Vec<String> {
+    let bytes = combo.as_bytes();
+    let is_no_suit_non_pair = bytes.len() == 2 && bytes[0] != bytes[1];
+
+    if is_no_suit_non_pair {
+        vec![format!("{combo}s"), format!("{combo}o")]
+    } else {
+        vec![combo.to_string()]
+    }
 }
 
 pub(super) fn separator(input: &mut &str) -> winnow::Result<()> {
@@ -64,7 +87,7 @@ pub(super) fn range(input: &mut &str) -> winnow::Result<Vec<(String, RangeEntry)
         separated(0.., range_entry, separator),
         _: opt(separator),
     )
-    .map(|(entries,)| entries)
+    .map(|(entries,): (Vec<Vec<(String, RangeEntry)>>,)| entries.into_iter().flatten().collect())
     .context(StrContext::Label("Range"))
     .parse_next(input)
 }
