@@ -203,6 +203,27 @@ impl Range {
             .map(|(combo, frequency)| ComboFrequency::new(combo, frequency))
             .collect()
     }
+
+    /// Project per-hand reach weights down to a combo-keyed range for the transitional
+    /// combo shim (#643). Groups 4-char hands by combo (`hand_to_combo`); a combo is
+    /// present iff at least one of its hands has reach > 0. The kept frequency is the
+    /// max reach across the combo's hands (a mechanical shim to fit the combo-keyed
+    /// `ActionRange.range`, NOT a sampling aggregation — dropped when #647 removes combo).
+    pub(crate) fn from_hand_reaches<'a, I>(hands: I) -> Result<Self, RangeParseError>
+    where
+        I: IntoIterator<Item = (&'a str, f64)>,
+    {
+        let mut by_combo: IndexMap<String, f64> = IndexMap::new();
+        for (hand, reach) in hands {
+            if reach <= 0.0 {
+                continue;
+            }
+            let combo = parser::hand_to_combo(hand);
+            let entry = by_combo.entry(combo).or_insert(0.0);
+            *entry = entry.max(reach);
+        }
+        Range::from_pairs(by_combo)
+    }
 }
 
 impl fmt::Display for Range {
