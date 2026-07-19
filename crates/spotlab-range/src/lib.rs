@@ -1,14 +1,18 @@
 use std::fmt;
 
 use indexmap::IndexMap;
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use winnow::prelude::*;
 
+mod hand;
 pub(crate) mod parser;
 
 #[cfg(test)]
 mod test;
+
+pub(crate) use hand::Hand;
 
 /// Canonical hand-to-frequency pair: the hand+weight currency shared by the range's
 /// consumed/display/IPC surface and the sampler's internal dealing distribution. `hand` is a
@@ -21,10 +25,48 @@ mod test;
 /// [`Range::from_hand_frequencies`]. Internally it is also the dealing/weight currency the drill
 /// sampler consumes (`RangeSource::deal_hand_frequencies`). The combo grammar survives only in the
 /// parser/renderer and the UI brush; it never crosses IPC.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+///
+/// Valid-by-construction: `hand` is a validated canonical [`Hand`] and `frequency` is checked to
+/// be in `[0, 1]`. Off the IPC wire this is enforced by the custom [`Deserialize`] impl (a
+/// malformed hand fails [`Hand`]'s own deserialization; an out-of-range frequency fails here), so
+/// [`Range`] always receives already-known-valid data.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct HandFrequency {
-    pub hand: String,
+    pub hand: Hand,
     pub frequency: f64,
+}
+
+impl TryFrom<(Hand, f64)> for HandFrequency {
+    type Error = RangeParseError;
+
+    /// Build a `HandFrequency` from a [`Hand`] and a frequency, validating the frequency is in
+    /// `[0, 1]` (rejecting otherwise with [`RangeParseError::FrequencyOutOfRange`]). The hand is
+    /// already valid by virtue of being a [`Hand`].
+    fn try_from((hand, frequency): (Hand, f64)) -> Result<Self, Self::Error> {
+        if !(0.0..=1.0).contains(&frequency) {
+            return Err(RangeParseError::FrequencyOutOfRange {
+                combo: hand.to_combo(),
+                frequency,
+            });
+        }
+        Ok(Self { hand, frequency })
+    }
+}
+
+impl<'de> Deserialize<'de> for HandFrequency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            hand: Hand,
+            frequency: f64,
+        }
+
+        let Raw { hand, frequency } = Raw::deserialize(deserializer)?;
+        HandFrequency::try_from((hand, frequency)).map_err(de::Error::custom)
+    }
 }
 
 /// A single concrete hand (e.g. `AsKd`, `QhQs`) mapped to its weight within a range.
@@ -61,7 +103,7 @@ struct RangeEntry {
 /// [`crate::upi::HandRange`], which is the raw 1326-wide ordered read including zeros.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Range {
-    entries: IndexMap<String, RangeEntry>,
+    entries: IndexMap<Hand, RangeEntry>,
 }
 
 /// Error produced when a range string contains malformed tokens.
@@ -79,15 +121,19 @@ pub enum RangeParseError {
 }
 
 impl Range {
-    /// Build a range from [`HandFrequency`] items, dropping any hand with a non-positive frequency
-    /// (a 0-weight hand is not in the range). On a duplicate hand the last item wins (via
-    /// [`IndexMap::insert`]), matching [`Range::parse`].
+    /// Build a range from already-valid [`HandFrequency`] items — the single materialization
+    /// boundary for both the `SetRange`/`AddAction`/`format_range` IPC write path and the internal
+    /// solver-reach path.
+    ///
+    /// Infallible: each [`HandFrequency`] is valid-by-construction (a canonical [`Hand`] and a
+    /// `[0, 1]` frequency), so there is nothing left to validate here. Any hand with a non-positive
+    /// frequency is dropped (a 0-weight hand is not in the range). Insertion order is preserved; on
+    /// a duplicate hand the last item wins (via [`IndexMap::insert`]), matching [`Range::parse`].
     ///
     /// `raw` is synthesized as `format!("{frequency}")` so a hand built this way still reproduces
     /// the solver wire format (a weight-1 hand renders as the bare token `1`) — [`HandFrequency`]
-    /// carries no source text of its own. Trusts already-canonical solver labels; use
-    /// [`Range::from_hand_frequencies`] for arbitrary IPC input that needs validation.
-    pub(crate) fn from_hand_weights<I>(hands: I) -> Self
+    /// carries no source text of its own.
+    pub(crate) fn from_hand_frequencies<I>(hands: I) -> Self
     where
         I: IntoIterator<Item = HandFrequency>,
     {
@@ -106,31 +152,6 @@ impl Range {
             );
         }
         Self { entries }
-    }
-
-    /// Build a validated range from untrusted [`HandFrequency`] items — the write boundary for
-    /// the `format_range` IPC command.
-    ///
-    /// Each `hand` is validated against the 4-char suit-specific grammar
-    /// ([`parser::hand_to_combo`]) and each frequency against `[0, 1]`, rejecting either with a
-    /// [`RangeParseError`] rather than panicking or silently retaining a malformed key (which
-    /// would later trip [`parser::combo_to_hands`] inside [`Range`]'s `Display` rendering). A valid
-    /// `0.0` frequency is dropped (a 0% hand is not in the range). Insertion order is preserved; on
-    /// a duplicate hand the last item wins.
-    pub(crate) fn from_hand_frequencies<I>(hands: I) -> Result<Self, RangeParseError>
-    where
-        I: IntoIterator<Item = HandFrequency>,
-    {
-        let mut entries = IndexMap::new();
-
-        for HandFrequency { hand, frequency } in hands {
-            let combo = parser::hand_to_combo(&hand)?;
-            if let Some(entry) = validated_entry(&combo, frequency)? {
-                entries.insert(hand, entry);
-            }
-        }
-
-        Ok(Self { entries })
     }
 
     /// Parse a range string into its structured hand-keyed form (expand-on-read).
@@ -179,24 +200,23 @@ impl Range {
     /// lookup — no combo resolution — since the range is already keyed by concrete hands.
     ///
     /// **Canonical-key contract.** `hand` MUST already be in this crate's canonical suit ordering
-    /// — the same ordering [`parser::combo_to_hands`]/[`Range::parse`] produce (e.g. `AdAh`, not
-    /// the semantically-equivalent `AhAd`). This does no normalization: a non-canonical key
-    /// silently misses the lookup and reads back as absent (`0`), just like a genuinely absent
-    /// hand. The solver's `show_hand_order` labels are *not* canonical (a pair's cards are listed
+    /// — the same ordering [`Hand::from_combo`]/[`Range::parse`] produce (e.g. `AdAh`, not the
+    /// semantically-equivalent `AhAd`). This does no normalization: a non-canonical key silently
+    /// misses the lookup and reads back as absent (`0`), just like a genuinely absent hand. The
+    /// solver's `show_hand_order` labels are *not* canonical (a pair's cards are listed
     /// highest-suit-first), so the `SolverRange::as_solver_cmd` call site normalizes each token via
-    /// [`canonical_hand`] before feeding it here.
-    pub(crate) fn append_solver_weight(&self, target: &mut String, hand: &str) {
+    /// [`Hand::from_solver_token`] before feeding it here. Taking a [`Hand`] makes that ordering a
+    /// type-level guarantee; the `debug_assert` re-checks it in case a caller hand-built a
+    /// non-canonical [`Hand`].
+    pub(crate) fn append_solver_weight(&self, target: &mut String, hand: &Hand) {
         if !target.is_empty() {
             target.push(' ');
         }
 
         debug_assert!(
-            parser::hand_to_combo(hand)
-                .map(|combo| parser::combo_to_hands(&combo).iter().any(|h| h == hand))
-                .unwrap_or(false),
-            "append_solver_weight requires `hand` ({hand}) in canonical suit ordering (the \
-             ordering combo_to_hands/parse produce); a non-canonical key silently reads back \
-             as absent (0) instead of erroring"
+            Hand::from_solver_token(hand.as_str()) == *hand,
+            "append_solver_weight requires a canonical `Hand` key ({hand}); a non-canonical key \
+             silently reads back as absent (0) instead of erroring"
         );
 
         match self.entries.get(hand) {
@@ -219,57 +239,6 @@ impl Range {
     }
 }
 
-/// Validate a frequency for range membership and, if it belongs, build its [`RangeEntry`].
-///
-/// Rejects a frequency outside `[0, 1]` with a [`RangeParseError::FrequencyOutOfRange`] tagged by
-/// `combo` (the already-validated canonical combo of the entry). Signals a 0% entry — which is not
-/// in the range — as `Ok(None)` so the caller drops it. Otherwise returns the entry with clean
-/// `raw` text (`format!("{frequency}")`, matching the frequency grammar so it round-trips through
-/// [`Range::parse`]). Used by the [`Range::from_hand_frequencies`] write boundary.
-fn validated_entry(combo: &str, frequency: f64) -> Result<Option<RangeEntry>, RangeParseError> {
-    if !(0.0..=1.0).contains(&frequency) {
-        return Err(RangeParseError::FrequencyOutOfRange {
-            combo: combo.to_string(),
-            frequency,
-        });
-    }
-
-    if frequency == 0.0 {
-        return Ok(None);
-    }
-
-    Ok(Some(RangeEntry {
-        weight: frequency,
-        raw: format!("{frequency}"),
-    }))
-}
-
-/// Normalize a solver-supplied hand token into this crate's canonical suit ordering — the ordering
-/// [`parser::combo_to_hands`]/[`Range::parse`] produce (e.g. `AdAh`, not the semantically-equivalent
-/// `AhAd`).
-///
-/// The solver's `show_hand_order` lists a pair's two cards highest-suit-first (`2d2c`), the reverse
-/// of the crate's lowest-suit-first canonical key (`2c2d`), so a direct hand-key lookup in
-/// [`Range::append_solver_weight`] would miss unless the token is normalized here first. Returns the
-/// input unchanged when it is not a well-formed hand token (there is no canonical form to map it to).
-pub(crate) fn canonical_hand(hand: &str) -> String {
-    match parser::hand_to_combo(hand) {
-        Ok(combo) => parser::combo_to_hands(&combo)
-            .into_iter()
-            .find(|candidate| same_cards(candidate, hand))
-            .unwrap_or_else(|| hand.to_string()),
-        Err(_) => hand.to_string(),
-    }
-}
-
-/// Whether two 4-character hand tokens name the same two cards regardless of card order (e.g.
-/// `2d2c` and `2c2d`). Both inputs must be validated 4-char ASCII tokens.
-fn same_cards(a: &str, b: &str) -> bool {
-    let (a_first, a_second) = a.split_at(2);
-    let (b_first, b_second) = b.split_at(2);
-    (a_first == b_first && a_second == b_second) || (a_first == b_second && a_second == b_first)
-}
-
 /// Append one `token`/`token:raw` entry to a comma-joined range string, normalizing a
 /// weight-1 (`raw == "1"`) entry to the bare token. Shared by the combo-collapse and
 /// per-hand-fallback arms of [`Range`]'s `Display` rendering.
@@ -288,9 +257,9 @@ impl fmt::Display for Range {
     /// Render the range to a range string, collapsing combos on write and falling back to
     /// per-hand tokens where a combo cannot be collapsed losslessly.
     ///
-    /// Live hands are grouped by combo (`hand_to_combo`) in first-seen order. A combo is
+    /// Live hands are grouped by combo ([`Hand::to_combo`]) in first-seen order. A combo is
     /// emitted as a single token *iff* all of its concrete hands are present
-    /// (`combo_to_hands` count: 6 pair / 4 suited / 12 offsuit) and they share one
+    /// ([`Hand::from_combo`] count: 6 pair / 4 suited / 12 offsuit) and they share one
     /// `weight`+`raw` — rendered bare when `raw == "1"`, else `COMBO:raw`, reproducing the
     /// combo-only blobs byte-for-byte. Otherwise (divergent weights, or only some hands
     /// present) each present hand is emitted as its own token (`AsKh` bare when `raw == "1"`,
@@ -299,12 +268,8 @@ impl fmt::Display for Range {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut by_combo: IndexMap<String, Vec<(&str, &RangeEntry)>> = IndexMap::new();
         for (hand, entry) in &self.entries {
-            // Every hand in `entries` is a validated 4-char token (inserted via `parse`,
-            // `from_hand_weights`, or `from_hand_frequencies`), so `hand_to_combo`
-            // never fails here; fall back to the hand as its own group if it somehow does.
-            let combo = parser::hand_to_combo(hand).unwrap_or_else(|_| hand.clone());
             by_combo
-                .entry(combo)
+                .entry(hand.to_combo())
                 .or_default()
                 .push((hand.as_str(), entry));
         }
@@ -313,7 +278,7 @@ impl fmt::Display for Range {
 
         for (combo, hands) in &by_combo {
             let (_, first_entry) = hands[0];
-            let full = hands.len() == parser::combo_to_hands(combo).len();
+            let full = hands.len() == Hand::from_combo(combo).len();
             let uniform = hands.iter().all(|(_, entry)| {
                 entry.weight == first_entry.weight && entry.raw == first_entry.raw
             });

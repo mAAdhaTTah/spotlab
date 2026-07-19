@@ -1,11 +1,11 @@
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
-use super::{canonical_hand, HandFrequency, Range, RangeParseError};
+use super::{Hand, HandFrequency, Range, RangeParseError};
 
 fn hf(hand: &str, frequency: f64) -> HandFrequency {
     HandFrequency {
-        hand: hand.to_string(),
+        hand: Hand::from_solver_token(hand),
         frequency,
     }
 }
@@ -105,7 +105,7 @@ fn shared_weight_round_trips_to_combo_tokens(#[case] input: &str, #[case] expect
 // tokens, and re-parsing that string yields the identical `Range`.
 #[rstest]
 fn divergent_weights_emit_per_hand_tokens_and_round_trip() {
-    let range = Range::from_hand_weights(vec![hf("AhKh", 0.5), hf("AsKs", 0.25)]);
+    let range = Range::from_hand_frequencies(vec![hf("AhKh", 0.5), hf("AsKs", 0.25)]);
     let rendered = range.to_string();
     assert_eq!(rendered, "AhKh:0.5,AsKs:0.25");
     assert_eq!(Range::parse(&rendered).unwrap(), range);
@@ -115,9 +115,10 @@ fn divergent_weights_emit_per_hand_tokens_and_round_trip() {
 // collapsed and each present hand is emitted as its own token.
 #[rstest]
 fn partial_combo_emits_per_hand_tokens() {
-    let range = Range::from_hand_weights(vec![hf("QhQd", 1.0), hf("QhQs", 1.0)]);
+    // `hf` canonicalizes each token (`QhQd` → the lowest-suit-first `QdQh`).
+    let range = Range::from_hand_frequencies(vec![hf("QhQd", 1.0), hf("QhQs", 1.0)]);
     let rendered = range.to_string();
-    assert_eq!(rendered, "QhQd,QhQs");
+    assert_eq!(rendered, "QdQh,QhQs");
     assert_eq!(Range::parse(&rendered).unwrap(), range);
 }
 
@@ -199,7 +200,7 @@ fn append_solver_weight_reproduces_wire_format(
     let mut target = String::new();
     Range::parse(range)
         .unwrap()
-        .append_solver_weight(&mut target, hand);
+        .append_solver_weight(&mut target, &Hand::from_solver_token(hand));
     assert_eq!(target, expected);
 }
 
@@ -207,15 +208,16 @@ fn append_solver_weight_reproduces_wire_format(
 fn append_solver_weight_space_separates() {
     let range = Range::parse("AA:0.75,KK").unwrap();
     let mut target = String::new();
-    range.append_solver_weight(&mut target, "AcAd");
-    range.append_solver_weight(&mut target, "KcKd");
-    range.append_solver_weight(&mut target, "QcQd");
+    range.append_solver_weight(&mut target, &Hand::from_solver_token("AcAd"));
+    range.append_solver_weight(&mut target, &Hand::from_solver_token("KcKd"));
+    range.append_solver_weight(&mut target, &Hand::from_solver_token("QcQd"));
     assert_eq!(target, "0.75 1 0");
 }
 
 // The solver's `show_hand_order` lists a pair's two cards highest-suit-first (the reverse of the
-// crate's canonical lowest-suit-first key); `canonical_hand` normalizes them so the direct
-// hand-key lookup in `append_solver_weight` finds the weight instead of silently emitting `0`.
+// crate's canonical lowest-suit-first key); `Hand::from_solver_token` normalizes them so the
+// direct hand-key lookup in `append_solver_weight` finds the weight instead of silently emitting
+// `0`.
 #[rstest]
 #[case::pair_reversed("2d2c", "2c2d")]
 #[case::pair_reversed_high("AsAh", "AhAs")]
@@ -225,67 +227,87 @@ fn append_solver_weight_space_separates() {
 #[case::offsuit_unchanged("AsKh", "AsKh")]
 // A malformed token has no canonical form and passes through unchanged.
 #[case::malformed_passthrough("not-a-hand", "not-a-hand")]
-fn canonical_hand_normalizes_solver_tokens(#[case] input: &str, #[case] expected: &str) {
-    assert_eq!(canonical_hand(input), expected);
+fn from_solver_token_normalizes_solver_tokens(#[case] input: &str, #[case] expected: &str) {
+    assert_eq!(Hand::from_solver_token(input), expected);
+}
+
+// `Hand::parse` canonicalizes a pair's suit order (`AsAh` → `AhAs`) and rejects a malformed token
+// rather than passing it through, unlike `from_solver_token`.
+#[rstest]
+#[case::pair_reversed("AsAh", "AhAs")]
+#[case::offsuit_unchanged("AsKh", "AsKh")]
+fn hand_parse_canonicalizes(#[case] input: &str, #[case] expected: &str) {
+    assert_eq!(Hand::parse(input).expect("valid hand"), expected);
+}
+
+#[rstest]
+#[case::not_a_hand("ZZZZ")]
+#[case::too_short("AK")]
+#[case::over_long("AsKhQd")]
+fn hand_parse_rejects_malformed(#[case] input: &str) {
+    assert!(matches!(
+        Hand::parse(input),
+        Err(RangeParseError::Invalid(_))
+    ));
 }
 
 // A range parsed from combos, then fed the solver's (non-canonical) pair token via
-// `canonical_hand` + `append_solver_weight`, still resolves the weight — the load-bearing
+// `Hand::from_solver_token` + `append_solver_weight`, still resolves the weight — the load-bearing
 // invariant that keeps the `set_range` wire output byte-faithful.
 #[rstest]
 fn append_solver_weight_finds_weight_for_normalized_solver_pair_token() {
     let range = Range::parse("AA:0.5").unwrap();
     let mut target = String::new();
-    range.append_solver_weight(&mut target, &canonical_hand("AsAh"));
+    range.append_solver_weight(&mut target, &Hand::from_solver_token("AsAh"));
     assert_eq!(target, "0.5");
 }
 
 #[rstest]
-fn from_hand_weights_drops_non_positive() {
-    let range = Range::from_hand_weights(vec![
+fn from_hand_frequencies_drops_non_positive() {
+    let range = Range::from_hand_frequencies(vec![
         hf("AhKh", 0.4),
         hf("AsKs", 0.0),
-        hf("QhQd", -0.1),
-        hf("JhJd", 0.6),
+        hf("QdQh", -0.1),
+        hf("JdJh", 0.6),
     ]);
     assert_eq!(range.hand_frequency("AhKh"), 0.4);
     assert_eq!(range.hand_frequency("AsKs"), 0.0);
-    assert_eq!(range.hand_frequency("QhQd"), 0.0);
-    assert_eq!(range.hand_frequency("JhJd"), 0.6);
+    assert_eq!(range.hand_frequency("QdQh"), 0.0);
+    assert_eq!(range.hand_frequency("JdJh"), 0.6);
     assert!(!range.is_empty());
-    assert!(Range::from_hand_weights(Vec::<HandFrequency>::new()).is_empty());
+    assert!(Range::from_hand_frequencies(Vec::<HandFrequency>::new()).is_empty());
 }
 
 #[rstest]
 fn to_hand_frequencies_preserves_insertion_order() {
-    let range = Range::from_hand_weights(vec![hf("AhKh", 0.5), hf("QhQd", 1.0)]);
+    let range = Range::from_hand_frequencies(vec![hf("AhKh", 0.5), hf("QdQh", 1.0)]);
     let pairs: Vec<(String, f64)> = range
         .to_hand_frequencies()
         .into_iter()
-        .map(|hf| (hf.hand, hf.frequency))
+        .map(|hf| (hf.hand.into_inner(), hf.frequency))
         .collect();
     assert_eq!(
         pairs,
-        vec![("AhKh".to_string(), 0.5), ("QhQd".to_string(), 1.0)]
+        vec![("AhKh".to_string(), 0.5), ("QdQh".to_string(), 1.0)]
     );
 }
 
 #[rstest]
-fn from_hand_frequencies_validates_drops_zero_and_rejects() {
-    let range = Range::from_hand_frequencies(vec![hf("AhKh", 0.5), hf("AsKs", 0.0)]).unwrap();
+fn from_hand_frequencies_drops_zero_frequency_hands() {
+    let range = Range::from_hand_frequencies(vec![hf("AhKh", 0.5), hf("AsKs", 0.0)]);
     assert_eq!(range.hand_frequency("AhKh"), 0.5);
     // A 0% hand is dropped, not stored.
     assert_eq!(range.hand_frequency("AsKs"), 0.0);
     assert_eq!(range.to_hand_frequencies().len(), 1);
+}
 
-    let invalid = Range::from_hand_frequencies(vec![hf("ZZZZ", 1.0)]);
-    assert!(matches!(invalid, Err(RangeParseError::Invalid(_))));
-
-    let out_of_range = Range::from_hand_frequencies(vec![hf("AhKh", 1.5)]);
-    assert!(matches!(
-        out_of_range,
-        Err(RangeParseError::FrequencyOutOfRange { .. })
-    ));
+// Frequency validation lives on `HandFrequency`, the valid-by-construction currency `Range` is
+// built from — not on the (now infallible) `Range::from_hand_frequencies`.
+#[rstest]
+fn hand_frequency_try_from_rejects_out_of_range_frequency() {
+    let err = HandFrequency::try_from((Hand::from_solver_token("AhKh"), 1.5))
+        .expect_err("out-of-range frequency must be rejected");
+    assert!(matches!(err, RangeParseError::FrequencyOutOfRange { .. }));
 }
 
 #[rstest]
@@ -294,7 +316,7 @@ fn from_hand_frequencies_accepts_full_combo_expansion() {
     // through the hand-level write boundary reconstructs the equivalent range, which collapses
     // back to the combo tokens.
     let hands = Range::parse("AKs:0.5,QQ").unwrap().to_hand_frequencies();
-    let range = Range::from_hand_frequencies(hands).unwrap();
+    let range = Range::from_hand_frequencies(hands);
     assert_eq!(range.to_hand_frequencies().len(), 10);
     assert_eq!(range.hand_frequency("AhKh"), 0.5);
     assert_eq!(range.hand_frequency("QhQs"), 1.0);
@@ -302,22 +324,13 @@ fn from_hand_frequencies_accepts_full_combo_expansion() {
 }
 
 #[rstest]
-fn from_hand_frequencies_drops_zero_expansion_and_rejects_invalid() {
+fn from_hand_frequencies_drops_zero_expansion() {
     // The full expansion of a combo supplied at 0.0 drops entirely, leaving only KK.
     let mut hands = Range::parse("AKs").unwrap().to_hand_frequencies();
     for hand in &mut hands {
         hand.frequency = 0.0;
     }
     hands.extend(Range::parse("KK").unwrap().to_hand_frequencies());
-    let dropped = Range::from_hand_frequencies(hands).unwrap();
+    let dropped = Range::from_hand_frequencies(hands);
     assert_eq!(dropped.to_string(), "KK");
-
-    let invalid = Range::from_hand_frequencies(vec![hf("ZZZZ", 1.0)]);
-    assert!(matches!(invalid, Err(RangeParseError::Invalid(_))));
-
-    let out_of_range = Range::from_hand_frequencies(vec![hf("AhKh", 1.5)]);
-    assert!(matches!(
-        out_of_range,
-        Err(RangeParseError::FrequencyOutOfRange { .. })
-    ));
 }

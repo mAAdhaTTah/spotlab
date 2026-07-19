@@ -4,7 +4,7 @@ use winnow::error::StrContext;
 use winnow::prelude::*;
 use winnow::token::take_while;
 
-use super::RangeEntry;
+use super::{Hand, RangeEntry};
 
 pub(super) fn rank(input: &mut &str) -> winnow::Result<char> {
     winnow::token::one_of([
@@ -36,13 +36,15 @@ pub(super) fn suit(input: &mut &str) -> winnow::Result<char> {
         .parse_next(input)
 }
 
-/// Parse a suit-specific 4-character hand token (`rank suit rank suit`, e.g. `AsKh`).
+/// Parse a suit-specific 4-character hand token (`rank suit rank suit`, e.g. `AsKh`) into its
+/// canonical [`Hand`].
 ///
 /// Disjoint from [`combo`]: a hand always has a suit char in position 2 (`s`/`c`/`d`/`h`),
-/// where a combo has a second *rank*, so the two alternatives never both match a token.
-pub(super) fn hand(input: &mut &str) -> winnow::Result<String> {
+/// where a combo has a second *rank*, so the two alternatives never both match a token. The
+/// grammar guarantees a well-formed token, so [`Hand::from_solver_token`] only canonicalizes here.
+pub(super) fn hand(input: &mut &str) -> winnow::Result<Hand> {
     seq!(rank, suit, rank, suit)
-        .map(|(r1, s1, r2, s2)| format!("{r1}{s1}{r2}{s2}"))
+        .map(|(r1, s1, r2, s2)| Hand::from_solver_token(&format!("{r1}{s1}{r2}{s2}")))
         .context(StrContext::Label("Hand"))
         .parse_next(input)
 }
@@ -67,15 +69,15 @@ fn expand_combo(combo: &str) -> Vec<String> {
 }
 
 /// Expand a combo token (as written in a range string, so possibly the suitless `AK` form)
-/// into every concrete 4-character hand it covers.
+/// into every concrete [`Hand`] it covers.
 ///
 /// Combines [`expand_combo`] (which splits a suitless non-pair `AK` into `AKs`/`AKo`) with
-/// [`combo_to_hands`] (which enumerates each canonical combo's concrete hands), so a suitless
+/// [`Hand::from_combo`] (which enumerates each canonical combo's concrete hands), so a suitless
 /// `AK` yields all 16 hands while `AKs`, `AKo`, and `QQ` yield their 4 / 12 / 6.
-pub(super) fn combo_token_to_hands(combo: &str) -> Vec<String> {
+pub(super) fn combo_token_to_hands(combo: &str) -> Vec<Hand> {
     expand_combo(combo)
         .iter()
-        .flat_map(|canonical| combo_to_hands(canonical))
+        .flat_map(|canonical| Hand::from_combo(canonical))
         .collect()
 }
 
@@ -83,7 +85,7 @@ pub(super) fn combo_token_to_hands(combo: &str) -> Vec<String> {
 /// with an optional `:frequency` suffix. A hand token yields a single hand key; a combo token
 /// expands to all of its concrete hands (`combo_token_to_hands`), each carrying the entry's
 /// shared weight/raw.
-pub(super) fn hand_range_entry(input: &mut &str) -> winnow::Result<Vec<(String, RangeEntry)>> {
+pub(super) fn hand_range_entry(input: &mut &str) -> winnow::Result<Vec<(Hand, RangeEntry)>> {
     seq!(
         alt((
             hand.map(|h| vec![h]),
@@ -115,13 +117,13 @@ pub(super) fn hand_range_entry(input: &mut &str) -> winnow::Result<Vec<(String, 
     .parse_next(input)
 }
 
-pub(super) fn hand_range(input: &mut &str) -> winnow::Result<Vec<(String, RangeEntry)>> {
+pub(super) fn hand_range(input: &mut &str) -> winnow::Result<Vec<(Hand, RangeEntry)>> {
     seq!(
         _: opt(separator),
         separated(0.., hand_range_entry, separator),
         _: opt(separator),
     )
-    .map(|(entries,): (Vec<Vec<(String, RangeEntry)>>,)| entries.into_iter().flatten().collect())
+    .map(|(entries,): (Vec<Vec<(Hand, RangeEntry)>>,)| entries.into_iter().flatten().collect())
     .context(StrContext::Label("Range"))
     .parse_next(input)
 }
@@ -136,84 +138,3 @@ pub(crate) const SUITS: [char; 4] = ['c', 'd', 'h', 's'];
 pub(crate) const RANKS: [char; 13] = [
     'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
 ];
-
-/// Expand a canonical combo key into every concrete 4-character hand it represents.
-///
-/// The inverse of [`hand_to_combo`] over a whole combo: a pair yields its 6 distinct-suit
-/// hands, a suited combo its 4 same-suit hands, an offsuit combo its 12 mixed-suit hands.
-/// Ranks are emitted in combo order so each hand round-trips back through [`hand_to_combo`].
-/// This is the lossless preflop combo→hand projection (suit-symmetric, all cards live, no
-/// board) the hand-keyed consumed path is built on.
-pub(super) fn combo_to_hands(combo: &str) -> Vec<String> {
-    let bytes = combo.as_bytes();
-    let rank_one = bytes[0] as char;
-    let rank_two = if bytes.len() >= 2 {
-        bytes[1] as char
-    } else {
-        rank_one
-    };
-
-    match combo.get(2..3) {
-        None => {
-            let mut hands = Vec::with_capacity(6);
-            for (idx, suit_one) in SUITS.iter().enumerate() {
-                for suit_two in SUITS.iter().skip(idx + 1) {
-                    hands.push(format!("{rank_one}{suit_one}{rank_two}{suit_two}"));
-                }
-            }
-            hands
-        }
-        Some("s") => SUITS
-            .iter()
-            .map(|suit| format!("{rank_one}{suit}{rank_two}{suit}"))
-            .collect(),
-        Some("o") => {
-            let mut hands = Vec::with_capacity(12);
-            for suit_one in SUITS {
-                for suit_two in SUITS {
-                    if suit_one != suit_two {
-                        hands.push(format!("{rank_one}{suit_one}{rank_two}{suit_two}"));
-                    }
-                }
-            }
-            hands
-        }
-        Some(other) => unreachable!("invalid suitedness {other} in combo {combo}"),
-    }
-}
-
-/// Resolve a 4-character hand token (e.g. `AsKd`) into its combo (e.g. `AKo`).
-///
-/// `hand` is untrusted IPC input on some callers' paths (e.g. `format_range`'s
-/// `Vec<HandFrequency>`), so this validates length and each character against the rank/suit
-/// grammar rather than slicing byte ranges unconditionally, matching the
-/// `validate_grade_inputs` guard convention (`src-tauri/src/drill/scoring.rs`) instead of
-/// panicking on malformed input.
-pub(super) fn hand_to_combo(hand: &str) -> Result<String, super::RangeParseError> {
-    let chars: Vec<char> = hand.chars().collect();
-    let [rank_one, suit_one, rank_two, suit_two] = chars[..] else {
-        return Err(super::RangeParseError::Invalid(format!(
-            "Invalid hand string: {hand}"
-        )));
-    };
-
-    if !RANKS.contains(&rank_one)
-        || !RANKS.contains(&rank_two)
-        || !SUITS.contains(&suit_one)
-        || !SUITS.contains(&suit_two)
-    {
-        return Err(super::RangeParseError::Invalid(format!(
-            "Invalid hand string: {hand}"
-        )));
-    }
-
-    let suited = if rank_one == rank_two {
-        ""
-    } else if suit_one == suit_two {
-        "s"
-    } else {
-        "o"
-    };
-
-    Ok(format!("{rank_one}{rank_two}{suited}"))
-}
