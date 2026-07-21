@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use winnow::prelude::*;
 
+pub(crate) mod debug;
 mod hand;
 pub(crate) mod parser;
 
