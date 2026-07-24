@@ -185,9 +185,10 @@ impl Range {
 
     /// Weight for a concrete 4-character hand token, or `0.0` when the hand is absent.
     ///
-    /// Exercised by tests; the drill scoring path resolves hand weights off the IPC
-    /// `SpotAction.range` (a `Vec<HandFrequency>`) rather than this domain lookup.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// The single hand-weight lookup, shared by fixture-building tests that build a `Range`
+    /// directly and by `scoring::hand_frequency`, which materializes a `Range` from
+    /// `SpotAction.range` via `from_hand_frequencies` before looking up the hero's hand — rather
+    /// than duplicating this same find-or-default logic against the raw `Vec<HandFrequency>`.
     pub(crate) fn hand_frequency(&self, hand: &str) -> f64 {
         self.entries
             .get(hand)
