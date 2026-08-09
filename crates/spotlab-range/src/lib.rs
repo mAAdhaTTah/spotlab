@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::AddAssign;
 
 use indexmap::IndexMap;
 use serde::de::{self, Deserializer};
@@ -252,6 +253,24 @@ fn push_token(out: &mut String, token: &str, raw: &str) {
     if raw != "1" {
         out.push(':');
         out.push_str(raw);
+    }
+}
+
+impl AddAssign<&Range> for Range {
+    /// Fold `other` into this range: a hand present in both keeps the summed weight, capped at
+    /// `1`. Used when an action is removed and the range it held has to survive on a sibling
+    /// action rather than be dropped.
+    fn add_assign(&mut self, other: &Range) {
+        for (hand, entry) in &other.entries {
+            let weight = (self.hand_frequency(hand.as_str()) + entry.weight).min(1.0);
+            self.entries.insert(
+                hand.clone(),
+                RangeEntry {
+                    weight,
+                    raw: format!("{weight}"),
+                },
+            );
+        }
     }
 }
 
