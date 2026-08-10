@@ -1,6 +1,7 @@
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
+use super::parser::RANKS;
 use super::{Hand, HandFrequency, Range, RangeParseError};
 
 fn hf(hand: &str, frequency: f64) -> HandFrequency {
@@ -333,4 +334,196 @@ fn from_hand_frequencies_drops_zero_expansion() {
     hands.extend(Range::parse("KK").unwrap().to_hand_frequencies());
     let dropped = Range::from_hand_frequencies(hands);
     assert_eq!(dropped.to_string(), "KK");
+}
+
+#[rstest]
+fn full_deck_has_every_hand_at_weight_one() {
+    let deck = Range::full_deck();
+    let hands = deck.to_hand_frequencies();
+
+    assert_eq!(hands.len(), 1326);
+    assert!(hands.iter().all(|hf| hf.frequency == 1.0));
+    assert_eq!(deck.hand_frequency("AhKh"), 1.0);
+    assert_eq!(deck.hand_frequency("AhKd"), 1.0);
+    assert_eq!(deck.hand_frequency("2c2d"), 1.0);
+}
+
+#[rstest]
+fn full_deck_round_trips_through_display_and_parse() {
+    let deck = Range::full_deck();
+    let reparsed = Range::parse(&deck.to_string()).expect("full deck re-parses");
+
+    assert_eq!(reparsed, deck);
+}
+
+#[rstest]
+fn full_deck_renders_every_combo_as_a_bare_token() {
+    let rendered = Range::full_deck().to_string();
+    let tokens: Vec<&str> = rendered.split(',').collect();
+
+    assert_eq!(tokens.len(), 169, "169 canonical combos");
+    assert!(
+        tokens.iter().all(|token| !token.contains(':')),
+        "a weight-1 entry renders bare"
+    );
+    assert!(tokens.contains(&"AA"));
+    assert!(tokens.contains(&"AKs"));
+    assert!(tokens.contains(&"AKo"));
+    assert_eq!(RANKS.len(), 13);
+}
+
+#[rstest]
+fn first_divergence_is_none_when_parts_sum_to_the_receiver() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let a = Range::parse("AKs:0.3").expect("parse");
+    let b = Range::parse("AKs:0.2").expect("parse");
+
+    assert!(reach.first_divergence([&a, &b], 1e-6).is_none());
+}
+
+#[rstest]
+fn first_divergence_reports_an_over_assigned_hand() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let part = Range::parse("AKs:0.9").expect("parse");
+
+    let divergence = reach.first_divergence([&part], 1e-6).expect("divergence");
+    assert_eq!(divergence.hand, "AcKc");
+    assert_eq!(divergence.available, 0.5);
+    assert_eq!(divergence.assigned, 0.9);
+}
+
+#[rstest]
+fn first_divergence_reports_an_under_assigned_hand() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let part = Range::parse("AKs:0.2").expect("parse");
+
+    let divergence = reach.first_divergence([&part], 1e-6).expect("divergence");
+    assert_eq!(divergence.available, 0.5);
+    assert_eq!(divergence.assigned, 0.2);
+}
+
+#[rstest]
+fn first_divergence_reports_a_hand_absent_from_the_receiver() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let part = Range::parse("AKs:0.5,QQ:0.3").expect("parse");
+
+    let divergence = reach.first_divergence([&part], 1e-6).expect("divergence");
+    assert_eq!(divergence.available, 0.0);
+    assert_eq!(divergence.assigned, 0.3);
+    assert_eq!(divergence.hand.to_combo(), "QQ");
+}
+
+#[rstest]
+fn first_divergence_respects_tolerance() {
+    let reach = Range::parse("AKs:0.3").expect("parse");
+    let a = Range::parse("AKs:0.1").expect("parse");
+    let b = Range::parse("AKs:0.2").expect("parse");
+
+    assert!(
+        reach.first_divergence([&a, &b], 1e-6).is_none(),
+        "0.1 + 0.2 must not trip a 1e-6 tolerance"
+    );
+    assert!(
+        reach.first_divergence([&a, &b], 0.0).is_some(),
+        "and it does at zero tolerance, proving the sum is genuinely inexact"
+    );
+}
+
+#[rstest]
+fn first_divergence_returns_the_first_hand_in_receiver_order() {
+    let reach = Range::parse("AKs:0.5,QQ:0.5").expect("parse");
+    let part = Range::parse("AKs:0.9,QQ:0.9").expect("parse");
+
+    let divergence = reach.first_divergence([&part], 1e-6).expect("divergence");
+    assert_eq!(divergence.hand.to_combo(), "AKs");
+}
+
+#[rstest]
+fn first_divergence_with_no_parts_reports_the_whole_receiver() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let parts: [&Range; 0] = [];
+
+    let divergence = reach.first_divergence(parts, 1e-6).expect("divergence");
+    assert_eq!(divergence.available, 0.5);
+    assert_eq!(divergence.assigned, 0.0);
+}
+
+#[rstest]
+fn first_oversubscription_reports_a_hand_absent_from_the_receiver() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let part = Range::parse("AKs:0.5,QQ:0.3").expect("parse");
+
+    let divergence = reach
+        .first_oversubscription([&part], 1e-6)
+        .expect("oversubscription");
+    assert_eq!(divergence.available, 0.0);
+    assert_eq!(divergence.assigned, 0.3);
+    assert_eq!(divergence.hand.to_combo(), "QQ");
+}
+
+#[rstest]
+fn first_oversubscription_respects_tolerance() {
+    let reach = Range::parse("AKs:0.3").expect("parse");
+    let a = Range::parse("AKs:0.1").expect("parse");
+    let b = Range::parse("AKs:0.2").expect("parse");
+
+    assert!(
+        reach.first_oversubscription([&a, &b], 1e-6).is_none(),
+        "0.1 + 0.2 must not trip a 1e-6 tolerance"
+    );
+    assert!(
+        reach.first_oversubscription([&a, &b], 0.0).is_some(),
+        "and it does at zero tolerance, proving the sum is genuinely inexact"
+    );
+}
+
+#[rstest]
+fn first_oversubscription_returns_the_first_hand_in_receiver_order() {
+    let reach = Range::parse("AKs:0.5,QQ:0.5").expect("parse");
+    let part = Range::parse("AKs:0.9,QQ:0.9").expect("parse");
+
+    let divergence = reach
+        .first_oversubscription([&part], 1e-6)
+        .expect("oversubscription");
+    assert_eq!(divergence.hand.to_combo(), "AKs");
+}
+
+#[rstest]
+fn first_oversubscription_with_no_parts_is_none() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let parts: [&Range; 0] = [];
+
+    assert!(reach.first_oversubscription(parts, 1e-6).is_none());
+}
+
+#[rstest]
+fn first_oversubscription_ignores_under_assignment() {
+    let reach = Range::parse("AKs:0.5").expect("parse");
+    let part = Range::parse("AKs:0.2").expect("parse");
+
+    assert!(reach.first_oversubscription([&part], 1e-6).is_none());
+}
+
+// An earlier under-assigned hand must not mask a later over-assigned one.
+#[rstest]
+fn first_oversubscription_skips_past_an_under_assigned_hand() {
+    let reach = Range::parse("AKs:0.5,QQ:0.5").expect("parse");
+    let part = Range::parse("AKs:0.2,QQ:0.9").expect("parse");
+
+    assert_eq!(
+        reach
+            .first_divergence([&part], 1e-6)
+            .expect("divergence")
+            .hand
+            .to_combo(),
+        "AKs",
+        "first_divergence stops at the legal under-assignment"
+    );
+
+    let divergence = reach
+        .first_oversubscription([&part], 1e-6)
+        .expect("oversubscription");
+    assert_eq!(divergence.hand.to_combo(), "QQ");
+    assert_eq!(divergence.assigned, 0.9);
+    assert_eq!(divergence.available, 0.5);
 }

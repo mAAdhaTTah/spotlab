@@ -15,6 +15,7 @@ pub(crate) mod parser;
 mod test;
 
 pub(crate) use hand::Hand;
+use parser::RANKS;
 
 /// Canonical hand-to-frequency pair: the hand+weight currency shared by the range's
 /// consumed/display/IPC surface and the sampler's internal dealing distribution. `hand` is a
@@ -69,6 +70,16 @@ impl<'de> Deserialize<'de> for HandFrequency {
         let Raw { hand, frequency } = Raw::deserialize(deserializer)?;
         HandFrequency::try_from((hand, frequency)).map_err(de::Error::custom)
     }
+}
+
+/// A hand whose summed assigned weight differs from the weight available for it. Reported by
+/// [`Range::first_divergence`] / [`Range::first_oversubscription`]; the caller reads the two
+/// weights to build its own message.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Divergence {
+    pub hand: Hand,
+    pub available: f64,
+    pub assigned: f64,
 }
 
 /// A single concrete hand (e.g. `AsKd`, `QhQs`) mapped to its weight within a range.
@@ -156,6 +167,31 @@ impl Range {
         Self { entries }
     }
 
+    /// Every hand in the deck at weight 1 — the unconstrained range, and the reach of a player
+    /// who has not acted yet.
+    pub(crate) fn full_deck() -> Range {
+        let mut combos = Vec::with_capacity(169);
+        for (first, high) in RANKS.iter().enumerate() {
+            for low in RANKS.iter().skip(first) {
+                if high == low {
+                    combos.push(format!("{high}{low}"));
+                } else {
+                    combos.push(format!("{high}{low}s"));
+                    combos.push(format!("{high}{low}o"));
+                }
+            }
+        }
+
+        Range::from_hand_frequencies(combos.iter().flat_map(|combo| {
+            Hand::from_combo(combo)
+                .into_iter()
+                .map(|hand| HandFrequency {
+                    hand,
+                    frequency: 1.0,
+                })
+        }))
+    }
+
     /// Parse a range string into its structured hand-keyed form (expand-on-read).
     ///
     /// Accepts both comma-separated (frontend wire format) and space-separated (legacy) tokens,
@@ -239,6 +275,70 @@ impl Range {
                 frequency: entry.weight,
             })
             .collect()
+    }
+
+    /// The first hand whose summed weight across `parts` differs from this range's weight for
+    /// that hand by more than `tolerance`, in either direction.
+    pub(crate) fn first_divergence<'a>(
+        &self,
+        parts: impl IntoIterator<Item = &'a Range>,
+        tolerance: f64,
+    ) -> Option<Divergence> {
+        self.diverging(parts, |available, assigned| {
+            (assigned - available).abs() > tolerance
+        })
+    }
+
+    /// The first hand whose summed weight across `parts` *exceeds* this range's weight for that
+    /// hand by more than `tolerance`. Distinct from [`Range::first_divergence`] because a hand
+    /// may legally be under-assigned (the remainder folds) while a later hand is over-assigned —
+    /// a single either-direction scan would stop at the legal one and miss the violation.
+    pub(crate) fn first_oversubscription<'a>(
+        &self,
+        parts: impl IntoIterator<Item = &'a Range>,
+        tolerance: f64,
+    ) -> Option<Divergence> {
+        self.diverging(parts, |available, assigned| {
+            assigned - available > tolerance
+        })
+    }
+
+    /// Iterates this range's hands in insertion order, then any hand present only in `parts`, so
+    /// a hand assigned mass it does not have here is reported too.
+    ///
+    /// Sums `parts` internally and uncapped, so no `Range` ever transiently holds a weight above
+    /// 1 and leaks e.g. an `AhKh:1.4` token through [`Display`]. `is_violation` is called as
+    /// `(available, assigned)` — this range's weight for the hand, then the summed weight from
+    /// `parts`.
+    fn diverging<'a>(
+        &self,
+        parts: impl IntoIterator<Item = &'a Range>,
+        is_violation: impl Fn(f64, f64) -> bool,
+    ) -> Option<Divergence> {
+        let mut assigned: IndexMap<&Hand, f64> = IndexMap::new();
+        for part in parts {
+            for (hand, entry) in &part.entries {
+                *assigned.entry(hand).or_insert(0.0) += entry.weight;
+            }
+        }
+
+        self.entries
+            .keys()
+            .chain(
+                assigned
+                    .keys()
+                    .copied()
+                    .filter(|hand| !self.entries.contains_key(*hand)),
+            )
+            .find_map(|hand| {
+                let available = self.hand_frequency(hand.as_str());
+                let total = assigned.get(hand).copied().unwrap_or(0.0);
+                is_violation(available, total).then(|| Divergence {
+                    hand: hand.clone(),
+                    available,
+                    assigned: total,
+                })
+            })
     }
 }
 
