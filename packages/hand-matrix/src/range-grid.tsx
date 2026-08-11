@@ -1,13 +1,15 @@
 import { type CSSProperties, type FC, useMemo } from "react";
-import { HandMatrix } from "@/components/hand-matrix";
+import { cellFillGradient, HandMatrix } from "@/components/hand-matrix";
 import type { HandFrequency } from "@/tauri/bindings";
 import { aggregateHandRange } from "./service";
 
 const FILL_COLOR = "var(--color-emerald-500)";
 
-// Fill the cell from the bottom in proportion to the combo's aggregate weight, PioSOLVER-style.
 const cellFill = (weight: number): CSSProperties => ({
-  background: `linear-gradient(to top, ${FILL_COLOR} 0 ${weight * 100}%, transparent ${weight * 100}% 100%)`,
+  background: cellFillGradient([
+    `${FILL_COLOR} 0 ${weight * 100}%`,
+    `transparent ${weight * 100}% 100%`,
+  ]),
 });
 
 // A read-only 13×13 range grid: each cell fills to its combo's aggregate weight. The aggregate is a

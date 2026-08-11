@@ -177,6 +177,15 @@ const chunk = (arr: string[], size: number) =>
     arr.slice(i * size, i * size + size),
   );
 
+// Canonical fill direction for a matrix cell's weight/band gradient — left to right — shared so
+// the edit-range editor and the read-only solution-table grid can't drift onto different axes.
+export const CELL_FILL_DIRECTION = "to right";
+
+export const cellFillGradient = (stops: string[]): string =>
+  stops.length === 0
+    ? "transparent"
+    : `linear-gradient(${CELL_FILL_DIRECTION}, ${stops.join(", ")})`;
+
 type ComboHandlers = {
   onClick?: (combo: string) => void;
   onMouseDown?: (combo: string) => void;
