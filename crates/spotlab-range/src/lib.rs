@@ -17,6 +17,14 @@ mod test;
 pub(crate) use hand::Hand;
 use parser::RANKS;
 
+/// The canonical weight tolerance for comparing two ranges' `f64` weights — every
+/// range-equality check in the crate (`TreeManager::validate_ranges`'s reach/distribution
+/// rules, `PostflopNode::assert_compatible`'s PIO-import comparison) shares this single
+/// constant rather than each defining its own copy. Weights ultimately arrive as `f64` from
+/// the UI or a solver round-trip and are summed across a node's actions, so exact comparison
+/// would reject values like `0.1 + 0.2` spuriously.
+pub(crate) const WEIGHT_TOLERANCE: f64 = 1e-6;
+
 /// Canonical hand-to-frequency pair: the hand+weight currency shared by the range's
 /// consumed/display/IPC surface and the sampler's internal dealing distribution. `hand` is a
 /// 4-char suit-specific hand (e.g. `AsKd`), NOT a canonical combo (`AKo`).
@@ -264,6 +272,48 @@ impl Range {
         }
     }
 
+    /// Canonical, fixed-precision rendering of this range's weights — the single formatting
+    /// both `NodeSolution::compute_range_hash` (config-side) and `BoardSolution::revalidate`
+    /// (artifact-side, from a `show_range` read-back) hash through, so the two agree for the
+    /// same logical range regardless of which produced it.
+    ///
+    /// Weights are rounded to the nearest multiple of [`WEIGHT_TOLERANCE`] (1e-6) rather than
+    /// rendered via [`Range`]'s [`Display`][fmt::Display] (which preserves exact source text):
+    /// a solver round-trip returns per-combo floats with noise at roughly 1e-7 (e.g.
+    /// `0.99999994` for a nominal `1.0`), which would otherwise hash differently from the same
+    /// weight typed into a range string. 1e-6 is comfortably looser than that noise floor while
+    /// remaining far tighter than any deliberate range edit, and it is the same tolerance
+    /// [`Range::approx_eq`] already treats as "the same weight" elsewhere in the crate. Hands
+    /// are sorted by their canonical key (rather than iterated in insertion order) because the
+    /// two origins populate entries in different orders — range-string parse order vs. the
+    /// solver's `show_hand_order` order.
+    ///
+    /// Known limitation: this is nearest-multiple rounding, not bucketing with hysteresis, so
+    /// two weights within [`WEIGHT_TOLERANCE`] of each other but straddling a `…5e-7` midpoint
+    /// can round to different buckets and hash differently. This is accepted as a theoretical
+    /// edge case rather than designed around: config weights come from UI entry or ordinary
+    /// fractional values, not adversarially-chosen floats, and the 1e-6 bucket width is ~10x
+    /// the observed ~1e-7 solver noise floor, so a real round-trip landing exactly on a midpoint
+    /// is not expected in practice. If a board ever shows mysterious, non-reproducible false
+    /// drift, this is the first place to look.
+    pub(crate) fn canonical_weights(&self) -> String {
+        let mut hands: Vec<(&Hand, f64)> = self
+            .entries
+            .iter()
+            .map(|(hand, entry)| (hand, entry.weight))
+            .collect();
+        hands.sort_by_key(|(hand, _)| (*hand).clone());
+
+        hands
+            .into_iter()
+            .map(|(hand, weight)| {
+                let rounded = (weight / WEIGHT_TOLERANCE).round() * WEIGHT_TOLERANCE;
+                format!("{hand}:{rounded:.6}")
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
     /// The range's [`HandFrequency`] pairs in insertion order — the single hand-weight accessor,
     /// feeding both the IPC surface and the internal dealing/weight path. An empty range yields an
     /// empty `Vec` (distinct from `None`, "no range").
@@ -275,6 +325,15 @@ impl Range {
                 frequency: entry.weight,
             })
             .collect()
+    }
+
+    /// Whether `self` and `other` assign the same weight to every hand, within
+    /// [`WEIGHT_TOLERANCE`] — used by `PostflopNode::assert_compatible`'s PIO-import range
+    /// comparison. Built on [`Range::first_divergence`], so a hand present in only one range
+    /// still counts as a difference.
+    pub(crate) fn approx_eq(&self, other: &Range) -> bool {
+        self.first_divergence(std::iter::once(other), WEIGHT_TOLERANCE)
+            .is_none()
     }
 
     /// The first hand whose summed weight across `parts` differs from this range's weight for
