@@ -1,0 +1,50 @@
+{
+  "name": "@spotlab/hand-matrix",
+  "version": "0.1.0",
+  "description": "A 13x13 poker hand-matrix React component: the read-only grid primitive and a range-string-aware display component, themed through CSS custom properties.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://git.8p.jamesdigioia.com/mAAdhaTTah/strategy-builder"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/hand-matrix.css"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@spotlab/range": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build:vite": "vite build",
+    "build:css": "node scripts/copy-css.mjs",
+    "build": "pnpm typecheck && pnpm build:vite && pnpm build:css",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@spotlab/range": "workspace:*",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "^6.0.0",
+    "vite": "^8.3.1",
+    "vite-plugin-dts": "^5.1.2",
+    "vitest": "^4.1.4"
+  }
+}

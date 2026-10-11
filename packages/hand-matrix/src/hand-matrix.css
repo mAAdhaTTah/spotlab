@@ -1,0 +1,147 @@
+/*
+ * Defaults live in a named layer, not unlayered: unlayered CSS always beats
+ * every `@layer`, even one a consumer wrote specifically to override these
+ * variables. A named layer lets a consumer's plain (unlayered) override CSS
+ * win regardless of import order, and lets a consumer who uses cascade
+ * layers themselves (e.g. Tailwind) place their own override layer after
+ * this one. See the "Theming" section of README.md for how to register this
+ * layer's priority relative to a bundler-level layer system.
+ */
+@layer spotlab-hand-matrix {
+  .spotlab-hm-root {
+    --spotlab-hm-border: #d4d4d8;
+    --spotlab-hm-border-width: 1px;
+    --spotlab-hm-cell-bg: transparent;
+    --spotlab-hm-cell-fg: #18181b;
+    --spotlab-hm-muted-bg: #f4f4f5;
+    --spotlab-hm-muted-fg: #71717a;
+    --spotlab-hm-fill: #10b981;
+    --spotlab-hm-font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --spotlab-hm-font-size: 0.75rem;
+    --spotlab-hm-font-weight: 600;
+    --spotlab-hm-dead-hatch: repeating-linear-gradient(
+      45deg,
+      rgba(15, 23, 42, 0.22) 0 3px,
+      rgba(255, 255, 255, 0.18) 3px 6px
+    );
+    --spotlab-hm-radius: 0.5rem;
+    --spotlab-hm-surface-bg: #ffffff;
+    --spotlab-hm-track-bg: #e4e4e7;
+    --spotlab-hm-row-passive-bg: rgba(244, 244, 245, 0.4);
+  }
+}
+
+.spotlab-hm-row {
+  display: flex;
+  flex-flow: row nowrap;
+}
+
+.spotlab-hm-cell {
+  aspect-ratio: 1 / 1;
+  width: calc(100% / 13);
+  overflow: hidden;
+  background-color: var(--spotlab-hm-cell-bg);
+  border: var(--spotlab-hm-border-width) solid var(--spotlab-hm-border);
+  font-family: var(--spotlab-hm-font-family);
+  font-size: var(--spotlab-hm-font-size);
+  font-weight: var(--spotlab-hm-font-weight);
+  color: var(--spotlab-hm-cell-fg);
+}
+
+.spotlab-hm-cell-inner {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.spotlab-hm-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spotlab-hm-slider-row {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--spotlab-hm-radius);
+  border: var(--spotlab-hm-border-width) solid var(--spotlab-hm-border);
+  padding: 10px 12px;
+  background: var(--spotlab-hm-surface-bg);
+}
+
+.spotlab-hm-slider-row[data-passive="true"] {
+  background: var(--spotlab-hm-row-passive-bg);
+}
+
+.spotlab-hm-slider-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.spotlab-hm-slider-swatch {
+  flex: none;
+  height: 14px;
+  width: 14px;
+  border-radius: 3px;
+  border: var(--spotlab-hm-border-width) solid var(--spotlab-hm-border);
+}
+
+.spotlab-hm-slider-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--spotlab-hm-font-family);
+  color: var(--spotlab-hm-cell-fg);
+}
+
+.spotlab-hm-slider-remainder {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--spotlab-hm-muted-fg);
+}
+
+.spotlab-hm-slider-track-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spotlab-hm-slider-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  cursor: pointer;
+  border-radius: 5px;
+  border: var(--spotlab-hm-border-width) solid var(--spotlab-hm-border);
+  touch-action: none;
+}
+
+.spotlab-hm-slider-thumb {
+  position: absolute;
+  top: 50%;
+  height: 16px;
+  width: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--spotlab-hm-surface-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.spotlab-hm-weight-input {
+  height: 32px;
+  width: 58px;
+  flex: none;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 13px;
+  font-family: var(--spotlab-hm-font-family);
+  color: var(--spotlab-hm-cell-fg);
+  background: transparent;
+  border-radius: calc(var(--spotlab-hm-radius) * 0.5);
+  border: var(--spotlab-hm-border-width) solid var(--spotlab-hm-border);
+}

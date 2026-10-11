@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+license = "MIT"
+repository = "https://git.8p.jamesdigioia.com/mAAdhaTTah/strategy-builder"
+edition = "2021"
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+strip = true

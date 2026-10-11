@@ -2,28 +2,21 @@ use std::fmt;
 use std::ops::AddAssign;
 
 use indexmap::IndexMap;
+#[cfg(feature = "serde")]
 use serde::de::{self, Deserializer};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use winnow::prelude::*;
 
-pub(crate) mod debug;
+mod constants;
 mod hand;
-pub(crate) mod parser;
+mod parser;
 
 #[cfg(test)]
 mod test;
 
-pub(crate) use hand::Hand;
-use parser::RANKS;
-
-/// The canonical weight tolerance for comparing two ranges' `f64` weights — every
-/// range-equality check in the crate (`TreeManager::validate_ranges`'s reach/distribution
-/// rules, `PostflopNode::assert_compatible`'s PIO-import comparison) shares this single
-/// constant rather than each defining its own copy. Weights ultimately arrive as `f64` from
-/// the UI or a solver round-trip and are summed across a node's actions, so exact comparison
-/// would reject values like `0.1 + 0.2` spuriously.
-pub(crate) const WEIGHT_TOLERANCE: f64 = 1e-6;
+pub use constants::{COMBOS, RANKS, SUITS, WEIGHT_TOLERANCE};
+pub use hand::Hand;
 
 /// Canonical hand-to-frequency pair: the hand+weight currency shared by the range's
 /// consumed/display/IPC surface and the sampler's internal dealing distribution. `hand` is a
@@ -41,7 +34,9 @@ pub(crate) const WEIGHT_TOLERANCE: f64 = 1e-6;
 /// be in `[0, 1]`. Off the IPC wire this is enforced by the custom [`Deserialize`] impl (a
 /// malformed hand fails [`Hand`]'s own deserialization; an out-of-range frequency fails here), so
 /// [`Range`] always receives already-known-valid data.
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HandFrequency {
     pub hand: Hand,
     pub frequency: f64,
@@ -64,6 +59,7 @@ impl TryFrom<(Hand, f64)> for HandFrequency {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for HandFrequency {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -84,7 +80,7 @@ impl<'de> Deserialize<'de> for HandFrequency {
 /// [`Range::first_divergence`] / [`Range::first_oversubscription`]; the caller reads the two
 /// weights to build its own message.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Divergence {
+pub struct Divergence {
     pub hand: Hand,
     pub available: f64,
     pub assigned: f64,
@@ -93,10 +89,10 @@ pub(crate) struct Divergence {
 /// A single concrete hand (e.g. `AsKd`, `QhQs`) mapped to its weight within a range.
 ///
 /// `weight` is the parsed numeric frequency in `[0, 1]`. `raw` preserves the exact frequency
-/// text as written in the source range string, so the solver command wire format is reproduced
-/// faithfully (e.g. `0.75` stays `0.75`, `1` stays `1`). Note that canonical rendering via
-/// [`Range`]'s `Display` impl still normalizes a weight-1 entry to a bare token; `raw` itself is
-/// the unmodified source text.
+/// text as written in the source range string, so a solver command wire format (or any other
+/// byte-faithful re-render) is reproduced faithfully (e.g. `0.75` stays `0.75`, `1` stays `1`).
+/// Note that canonical rendering via [`Range`]'s `Display` impl still normalizes a weight-1 entry
+/// to a bare token; `raw` itself is the unmodified source text.
 #[derive(Debug, Clone, PartialEq)]
 struct RangeEntry {
     weight: f64,
@@ -105,25 +101,19 @@ struct RangeEntry {
 
 /// The materialized hand-level poker range: the single domain range type.
 ///
-/// Keyed by concrete 4-character hands (e.g. `AsKd`) rather than combos (`AKo`). This is the
-/// representation stored on the preflop tree, carried across the IPC surface (`SpotAction.range`,
-/// `PublicPlayerState.range`, the `PublicPlayerAction` variants), consumed by the drill
-/// sampling/scoring path, and serialized to the solver's `set_range` wire format. The combo
+/// Keyed by concrete 4-character hands (e.g. `AsKd`) rather than combos (`AKo`). The combo
 /// string form (`AKo:0.5`) is just a lossless *compacted serialization* of this type: combo
 /// tokens expand to their concrete hands on parse and collapse back on render.
 ///
-/// Postflop a range is the solver's authoritative per-hand reach; preflop it is the suit-symmetric
-/// expansion of a combo range (every hand of a combo shares one weight). Zero-weight hands are
-/// dropped, so a hand is present iff it is live with positive weight — which makes postflop dealing
-/// board-aware for free (board-blocked hands never carry weight from the solver, so they are never
-/// in the range).
+/// Zero-weight hands are dropped, so a hand is present iff it is live with positive weight —
+/// which makes board-aware dealing free for a board-blocked, postflop range (board-blocked hands
+/// never carry weight, so they are never in the range).
 ///
 /// Backed by an [`IndexMap`] so iteration follows parse/insertion order (deterministic weighted
 /// sampling for a given seed, and the order the canonical [`Range`]`::to_string` rendering
-/// relies on) while keyed lookups stay O(1). Distinct from the solver-read
-/// [`crate::upi::HandRange`], which is the raw 1326-wide ordered read including zeros.
+/// relies on) while keyed lookups stay O(1).
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct Range {
+pub struct Range {
     entries: IndexMap<Hand, RangeEntry>,
 }
 
@@ -132,8 +122,13 @@ pub(crate) struct Range {
 /// Empty or whitespace-only input is *not* an error — it parses to an empty range.
 /// Only genuinely malformed tokens (e.g. an unrecognized combo, or a `:` with no
 /// frequency digits) produce this.
-#[derive(Debug, thiserror::Error, Type, Serialize)]
-#[serde(tag = "type", content = "data", rename_all = "camelCase")]
+#[derive(Debug, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[cfg_attr(
+    feature = "serde",
+    serde(tag = "type", content = "data", rename_all = "camelCase")
+)]
 pub enum RangeParseError {
     #[error("Invalid range string: {0}")]
     Invalid(String),
@@ -143,8 +138,8 @@ pub enum RangeParseError {
 
 impl Range {
     /// Build a range from already-valid [`HandFrequency`] items — the single materialization
-    /// boundary for both the `SetRange`/`AddAction`/`format_range` IPC write path and the internal
-    /// solver-reach path.
+    /// boundary for a hand-keyed write path (e.g. an IPC `SetRange`/`AddAction` write, or an
+    /// internal solver-reach path).
     ///
     /// Infallible: each [`HandFrequency`] is valid-by-construction (a canonical [`Hand`] and a
     /// `[0, 1]` frequency), so there is nothing left to validate here. Any hand with a non-positive
@@ -152,9 +147,9 @@ impl Range {
     /// a duplicate hand the last item wins (via [`IndexMap::insert`]), matching [`Range::parse`].
     ///
     /// `raw` is synthesized as `format!("{frequency}")` so a hand built this way still reproduces
-    /// the solver wire format (a weight-1 hand renders as the bare token `1`) — [`HandFrequency`]
-    /// carries no source text of its own.
-    pub(crate) fn from_hand_frequencies<I>(hands: I) -> Self
+    /// a byte-faithful wire format (a weight-1 hand renders as the bare token `1`) —
+    /// [`HandFrequency`] carries no source text of its own.
+    pub fn from_hand_frequencies<I>(hands: I) -> Self
     where
         I: IntoIterator<Item = HandFrequency>,
     {
@@ -177,10 +172,17 @@ impl Range {
 
     /// Every hand in the deck at weight 1 — the unconstrained range, and the reach of a player
     /// who has not acted yet.
-    pub(crate) fn full_deck() -> Range {
+    ///
+    /// Walks [`RANKS`] high-to-low (rather than in its own ascending index order) so this
+    /// enumeration's order — and therefore the resulting `Range`'s `IndexMap` insertion order,
+    /// load-bearing for deterministic sampling and canonical rendering — stays `AA, AKs, AKo,
+    /// AQs, AQo, …` regardless of `RANKS`'s own direction.
+    pub fn full() -> Range {
         let mut combos = Vec::with_capacity(169);
-        for (first, high) in RANKS.iter().enumerate() {
-            for low in RANKS.iter().skip(first) {
+        for high_index in (0..RANKS.len()).rev() {
+            let high = RANKS[high_index];
+            for low_index in (0..=high_index).rev() {
+                let low = RANKS[low_index];
                 if high == low {
                     combos.push(format!("{high}{low}"));
                 } else {
@@ -202,80 +204,59 @@ impl Range {
 
     /// Parse a range string into its structured hand-keyed form (expand-on-read).
     ///
-    /// Accepts both comma-separated (frontend wire format) and space-separated (legacy) tokens,
-    /// each a combo token (e.g. `AKo`, `QQ`) or a suit-specific 4-character hand token (e.g.
-    /// `AsKh`). A combo token expands to all of its concrete hands at the shared weight/raw
-    /// (`combo_token_to_hands`); a hand token maps to exactly one hand key. An empty or
-    /// whitespace-only string yields an empty range. Malformed tokens produce a
-    /// [`RangeParseError`].
+    /// Accepts both comma-separated and space-separated tokens, each a combo token (e.g. `AKo`,
+    /// `QQ`) or a suit-specific 4-character hand token (e.g. `AsKh`). A combo token expands to
+    /// all of its concrete hands at the shared weight/raw (`combo_token_to_hands`); a hand token
+    /// maps to exactly one hand key. An empty or whitespace-only string yields an empty range.
+    /// Malformed tokens, or a frequency outside `[0, 1]`, produce a [`RangeParseError`].
     ///
     /// A hand/combo with an explicit `:0` weight is *dropped* — a 0% entry is not in the range, so
     /// it is never stored. A bare token (no `:freq`, weight 1) is kept.
-    pub(crate) fn parse(input: &str) -> Result<Self, RangeParseError> {
+    pub fn parse(input: &str) -> Result<Self, RangeParseError> {
         let entries = parser::hand_range
             .parse(input.trim())
             .map_err(|e| RangeParseError::Invalid(e.to_string()))?
             .into_iter()
             .filter(|(_, entry)| entry.weight != 0.0)
-            .collect();
+            .map(|(hand, entry)| {
+                if !(0.0..=1.0).contains(&entry.weight) {
+                    return Err(RangeParseError::FrequencyOutOfRange {
+                        combo: hand.to_combo(),
+                        frequency: entry.weight,
+                    });
+                }
+                Ok((hand, entry))
+            })
+            .collect::<Result<_, _>>()?;
 
         Ok(Self { entries })
     }
 
     /// An empty range contributes nothing to a weighted pick, so dealing/validation treat it the
     /// same as absent ("no range set").
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
     /// Weight for a concrete 4-character hand token, or `0.0` when the hand is absent.
-    ///
-    /// The single hand-weight lookup, shared by fixture-building tests that build a `Range`
-    /// directly and by `scoring::hand_frequency`, which materializes a `Range` from
-    /// `SpotAction.range` via `from_hand_frequencies` before looking up the hero's hand — rather
-    /// than duplicating this same find-or-default logic against the raw `Vec<HandFrequency>`.
-    pub(crate) fn hand_frequency(&self, hand: &str) -> f64 {
+    pub fn hand_frequency(&self, hand: &str) -> f64 {
         self.entries
             .get(hand)
             .map(|entry| entry.weight)
             .unwrap_or(0.0)
     }
 
-    /// Append the solver weight for a concrete 4-character hand to `target`, matching the
-    /// PIOSolver `set_range` wire format: the raw frequency text when the hand is present (a bare
-    /// `1` for a weight-1 hand), and `0` when the hand is absent. This is a direct hand-key
-    /// lookup — no combo resolution — since the range is already keyed by concrete hands.
-    ///
-    /// **Canonical-key contract.** `hand` MUST already be in this crate's canonical suit ordering
-    /// — the same ordering [`Hand::from_combo`]/[`Range::parse`] produce (e.g. `AdAh`, not the
-    /// semantically-equivalent `AhAd`). This does no normalization: a non-canonical key silently
-    /// misses the lookup and reads back as absent (`0`), just like a genuinely absent hand. The
-    /// solver's `show_hand_order` labels are *not* canonical (a pair's cards are listed
-    /// highest-suit-first), so the `SolverRange::as_solver_cmd` call site normalizes each token via
-    /// [`Hand::from_solver_token`] before feeding it here. Taking a [`Hand`] makes that ordering a
-    /// type-level guarantee; the `debug_assert` re-checks it in case a caller hand-built a
-    /// non-canonical [`Hand`].
-    pub(crate) fn append_solver_weight(&self, target: &mut String, hand: &Hand) {
-        if !target.is_empty() {
-            target.push(' ');
-        }
-
-        debug_assert!(
-            Hand::from_solver_token(hand.as_str()) == *hand,
-            "append_solver_weight requires a canonical `Hand` key ({hand}); a non-canonical key \
-             silently reads back as absent (0) instead of erroring"
-        );
-
-        match self.entries.get(hand) {
-            Some(entry) => target.push_str(&entry.raw),
-            None => target.push('0'),
-        }
+    /// The original frequency *text* for a concrete hand (e.g. `"0.75"`, or `"1"` for a weight-1
+    /// hand), or `None` when the hand is absent — the raw-text counterpart to
+    /// [`Range::hand_frequency`]'s parsed weight. `hand` must already be a canonical [`Hand`]
+    /// key; a non-canonical key reads back as absent, like a genuinely absent hand.
+    pub fn raw_weight(&self, hand: &Hand) -> Option<&str> {
+        self.entries.get(hand).map(|entry| entry.raw.as_str())
     }
 
-    /// Canonical, fixed-precision rendering of this range's weights — the single formatting
-    /// both `NodeSolution::compute_range_hash` (config-side) and `BoardSolution::revalidate`
-    /// (artifact-side, from a `show_range` read-back) hash through, so the two agree for the
-    /// same logical range regardless of which produced it.
+    /// Canonical, fixed-precision rendering of this range's weights — a single formatting both
+    /// sides of a config-vs-artifact range hash can share, so the two agree for the same logical
+    /// range regardless of which produced it.
     ///
     /// Weights are rounded to the nearest multiple of [`WEIGHT_TOLERANCE`] (1e-6) rather than
     /// rendered via [`Range`]'s [`Display`][fmt::Display] (which preserves exact source text):
@@ -285,8 +266,8 @@ impl Range {
     /// remaining far tighter than any deliberate range edit, and it is the same tolerance
     /// [`Range::approx_eq`] already treats as "the same weight" elsewhere in the crate. Hands
     /// are sorted by their canonical key (rather than iterated in insertion order) because the
-    /// two origins populate entries in different orders — range-string parse order vs. the
-    /// solver's `show_hand_order` order.
+    /// two origins populate entries in different orders — range-string parse order vs. a
+    /// solver's own hand order.
     ///
     /// Known limitation: this is nearest-multiple rounding, not bucketing with hysteresis, so
     /// two weights within [`WEIGHT_TOLERANCE`] of each other but straddling a `…5e-7` midpoint
@@ -294,9 +275,8 @@ impl Range {
     /// edge case rather than designed around: config weights come from UI entry or ordinary
     /// fractional values, not adversarially-chosen floats, and the 1e-6 bucket width is ~10x
     /// the observed ~1e-7 solver noise floor, so a real round-trip landing exactly on a midpoint
-    /// is not expected in practice. If a board ever shows mysterious, non-reproducible false
-    /// drift, this is the first place to look.
-    pub(crate) fn canonical_weights(&self) -> String {
+    /// is not expected in practice.
+    pub fn canonical_weights(&self) -> String {
         let mut hands: Vec<(&Hand, f64)> = self
             .entries
             .iter()
@@ -315,9 +295,9 @@ impl Range {
     }
 
     /// The range's [`HandFrequency`] pairs in insertion order — the single hand-weight accessor,
-    /// feeding both the IPC surface and the internal dealing/weight path. An empty range yields an
+    /// feeding both a wire surface and an internal dealing/weight path. An empty range yields an
     /// empty `Vec` (distinct from `None`, "no range").
-    pub(crate) fn to_hand_frequencies(&self) -> Vec<HandFrequency> {
+    pub fn to_hand_frequencies(&self) -> Vec<HandFrequency> {
         self.entries
             .iter()
             .map(|(hand, entry)| HandFrequency {
@@ -327,18 +307,42 @@ impl Range {
             .collect()
     }
 
+    /// Collapse this range to per-combo weights: for each of the 169 [`COMBOS`], the mean weight
+    /// over its total suit-combination count (6 for a pair, 4 suited, 12 offsuit), with absent
+    /// hands counting as zero.
+    ///
+    /// The mean (rather than, say, the max) is the only semantics correct for a board-aware
+    /// postflop range, where some suit-combinations are blocked by the board and genuinely carry
+    /// zero weight — a `max` would report such a combo at full strength. It is also correct for
+    /// a suit-symmetric preflop range, where every hand of a combo shares one weight and the mean
+    /// equals it; `max` is only correct in that narrower case. This is the single canonical
+    /// combo collapse — anything downstream that needs "weight per combo" should use this rather
+    /// than re-deriving it.
+    pub fn to_combo_weights(&self) -> IndexMap<String, f64> {
+        COMBOS
+            .iter()
+            .map(|&combo| {
+                let hands = Hand::from_combo(combo);
+                let sum: f64 = hands
+                    .iter()
+                    .map(|hand| self.hand_frequency(hand.as_str()))
+                    .sum();
+                (combo.to_string(), sum / hands.len() as f64)
+            })
+            .collect()
+    }
+
     /// Whether `self` and `other` assign the same weight to every hand, within
-    /// [`WEIGHT_TOLERANCE`] — used by `PostflopNode::assert_compatible`'s PIO-import range
-    /// comparison. Built on [`Range::first_divergence`], so a hand present in only one range
-    /// still counts as a difference.
-    pub(crate) fn approx_eq(&self, other: &Range) -> bool {
+    /// [`WEIGHT_TOLERANCE`]. Built on [`Range::first_divergence`], so a hand present in only one
+    /// range still counts as a difference.
+    pub fn approx_eq(&self, other: &Range) -> bool {
         self.first_divergence(std::iter::once(other), WEIGHT_TOLERANCE)
             .is_none()
     }
 
     /// The first hand whose summed weight across `parts` differs from this range's weight for
     /// that hand by more than `tolerance`, in either direction.
-    pub(crate) fn first_divergence<'a>(
+    pub fn first_divergence<'a>(
         &self,
         parts: impl IntoIterator<Item = &'a Range>,
         tolerance: f64,
@@ -352,7 +356,7 @@ impl Range {
     /// hand by more than `tolerance`. Distinct from [`Range::first_divergence`] because a hand
     /// may legally be under-assigned (the remainder folds) while a later hand is over-assigned —
     /// a single either-direction scan would stop at the legal one and miss the violation.
-    pub(crate) fn first_oversubscription<'a>(
+    pub fn first_oversubscription<'a>(
         &self,
         parts: impl IntoIterator<Item = &'a Range>,
         tolerance: f64,
@@ -417,8 +421,8 @@ fn push_token(out: &mut String, token: &str, raw: &str) {
 
 impl AddAssign<&Range> for Range {
     /// Fold `other` into this range: a hand present in both keeps the summed weight, capped at
-    /// `1`. Used when an action is removed and the range it held has to survive on a sibling
-    /// action rather than be dropped.
+    /// `1`. Used when, for example, an action is removed and the range it held has to survive on
+    /// a sibling action rather than be dropped.
     fn add_assign(&mut self, other: &Range) {
         for (hand, entry) in &other.entries {
             let weight = (self.hand_frequency(hand.as_str()) + entry.weight).min(1.0);
@@ -444,7 +448,7 @@ impl fmt::Display for Range {
     /// combo-only blobs byte-for-byte. Otherwise (divergent weights, or only some hands
     /// present) each present hand is emitted as its own token (`AsKh` bare when `raw == "1"`,
     /// else `AsKh:raw`), so the range string stays fully lossless. Tokens are joined with the
-    /// canonical comma separator matching the frontend's `join(",")`.
+    /// canonical comma separator.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut by_combo: IndexMap<String, Vec<(&str, &RangeEntry)>> = IndexMap::new();
         for (hand, entry) in &self.entries {

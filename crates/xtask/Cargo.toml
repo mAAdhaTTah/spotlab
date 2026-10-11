@@ -1,0 +1,11 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+spotlab-range = { path = "../spotlab-range", default-features = false, features = [
+  "serde",
+] }
+serde_json = "1"

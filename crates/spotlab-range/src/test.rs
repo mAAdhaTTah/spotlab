@@ -1,12 +1,13 @@
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
-use super::parser::RANKS;
-use super::{Hand, HandFrequency, Range, RangeParseError};
+use std::collections::HashSet;
+
+use super::{Hand, HandFrequency, Range, RangeParseError, COMBOS, RANKS};
 
 fn hf(hand: &str, frequency: f64) -> HandFrequency {
     HandFrequency {
-        hand: Hand::from_solver_token(hand),
+        hand: Hand::canonicalize(hand),
         frequency,
     }
 }
@@ -79,6 +80,20 @@ fn parse_tolerates_surrounding_separators(#[case] range: &str) {
 #[case::non_numeric_frequency("AKs:abc")]
 fn parse_errors_on_malformed_input(#[case] range: &str) {
     assert!(Range::parse(range).is_err());
+}
+
+// Every construction path enforces `frequency ∈ [0, 1]`; `Range::parse` is no exception, even
+// though the grammar itself happily accepts `AKs:5` (unsigned `frequency_text` has no upper
+// bound). Before this contract was unified, this silently produced an out-of-contract
+// `HandFrequency { frequency: 5.0 }` on the wire.
+#[rstest]
+fn parse_rejects_out_of_range_frequency() {
+    let err = Range::parse("AKs:5").expect_err("5.0 is outside [0, 1]");
+    assert!(matches!(
+        err,
+        RangeParseError::FrequencyOutOfRange { combo, frequency }
+            if combo == "AKs" && frequency == 5.0
+    ));
 }
 
 // (a) Shared-weight round-trip: a combo whose hands are all present at one weight re-emits
@@ -186,37 +201,8 @@ fn empty_constructor_serializes_to_empty_string() {
     assert!(Range::default().is_empty());
 }
 
-// (d) `append_solver_weight` reproduces the raw wire text per hand: the raw frequency when
-// present, `1` for a weight-1 hand, `0` when the hand is absent.
-#[rstest]
-#[case::present_with_suffix("AKs:0.75", "AhKh", "0.75")]
-#[case::present_without_suffix("AKs", "AhKh", "1")]
-#[case::absent("AKs", "AhKd", "0")]
-#[case::preserves_raw_text("QQ:0.5", "QhQs", "0.5")]
-fn append_solver_weight_reproduces_wire_format(
-    #[case] range: &str,
-    #[case] hand: &str,
-    #[case] expected: &str,
-) {
-    let mut target = String::new();
-    Range::parse(range)
-        .unwrap()
-        .append_solver_weight(&mut target, &Hand::from_solver_token(hand));
-    assert_eq!(target, expected);
-}
-
-#[rstest]
-fn append_solver_weight_space_separates() {
-    let range = Range::parse("AA:0.75,KK").unwrap();
-    let mut target = String::new();
-    range.append_solver_weight(&mut target, &Hand::from_solver_token("AcAd"));
-    range.append_solver_weight(&mut target, &Hand::from_solver_token("KcKd"));
-    range.append_solver_weight(&mut target, &Hand::from_solver_token("QcQd"));
-    assert_eq!(target, "0.75 1 0");
-}
-
 // The solver's `show_hand_order` lists a pair's two cards highest-suit-first (the reverse of the
-// crate's canonical lowest-suit-first key); `Hand::from_solver_token` normalizes them so the
+// crate's canonical lowest-suit-first key); `Hand::canonicalize` normalizes them so the
 // direct hand-key lookup in `append_solver_weight` finds the weight instead of silently emitting
 // `0`.
 #[rstest]
@@ -228,12 +214,12 @@ fn append_solver_weight_space_separates() {
 #[case::offsuit_unchanged("AsKh", "AsKh")]
 // A malformed token has no canonical form and passes through unchanged.
 #[case::malformed_passthrough("not-a-hand", "not-a-hand")]
-fn from_solver_token_normalizes_solver_tokens(#[case] input: &str, #[case] expected: &str) {
-    assert_eq!(Hand::from_solver_token(input), expected);
+fn canonicalize_normalizes_solver_tokens(#[case] input: &str, #[case] expected: &str) {
+    assert_eq!(Hand::canonicalize(input), expected);
 }
 
 // `Hand::parse` canonicalizes a pair's suit order (`AsAh` → `AhAs`) and rejects a malformed token
-// rather than passing it through, unlike `from_solver_token`.
+// rather than passing it through, unlike `canonicalize`.
 #[rstest]
 #[case::pair_reversed("AsAh", "AhAs")]
 #[case::offsuit_unchanged("AsKh", "AsKh")]
@@ -250,17 +236,6 @@ fn hand_parse_rejects_malformed(#[case] input: &str) {
         Hand::parse(input),
         Err(RangeParseError::Invalid(_))
     ));
-}
-
-// A range parsed from combos, then fed the solver's (non-canonical) pair token via
-// `Hand::from_solver_token` + `append_solver_weight`, still resolves the weight — the load-bearing
-// invariant that keeps the `set_range` wire output byte-faithful.
-#[rstest]
-fn append_solver_weight_finds_weight_for_normalized_solver_pair_token() {
-    let range = Range::parse("AA:0.5").unwrap();
-    let mut target = String::new();
-    range.append_solver_weight(&mut target, &Hand::from_solver_token("AsAh"));
-    assert_eq!(target, "0.5");
 }
 
 #[rstest]
@@ -306,7 +281,7 @@ fn from_hand_frequencies_drops_zero_frequency_hands() {
 // built from — not on the (now infallible) `Range::from_hand_frequencies`.
 #[rstest]
 fn hand_frequency_try_from_rejects_out_of_range_frequency() {
-    let err = HandFrequency::try_from((Hand::from_solver_token("AhKh"), 1.5))
+    let err = HandFrequency::try_from((Hand::canonicalize("AhKh"), 1.5))
         .expect_err("out-of-range frequency must be rejected");
     assert!(matches!(err, RangeParseError::FrequencyOutOfRange { .. }));
 }
@@ -337,8 +312,8 @@ fn from_hand_frequencies_drops_zero_expansion() {
 }
 
 #[rstest]
-fn full_deck_has_every_hand_at_weight_one() {
-    let deck = Range::full_deck();
+fn full_has_every_hand_at_weight_one() {
+    let deck = Range::full();
     let hands = deck.to_hand_frequencies();
 
     assert_eq!(hands.len(), 1326);
@@ -349,16 +324,16 @@ fn full_deck_has_every_hand_at_weight_one() {
 }
 
 #[rstest]
-fn full_deck_round_trips_through_display_and_parse() {
-    let deck = Range::full_deck();
+fn full_round_trips_through_display_and_parse() {
+    let deck = Range::full();
     let reparsed = Range::parse(&deck.to_string()).expect("full deck re-parses");
 
     assert_eq!(reparsed, deck);
 }
 
 #[rstest]
-fn full_deck_renders_every_combo_as_a_bare_token() {
-    let rendered = Range::full_deck().to_string();
+fn full_renders_every_combo_as_a_bare_token() {
+    let rendered = Range::full().to_string();
     let tokens: Vec<&str> = rendered.split(',').collect();
 
     assert_eq!(tokens.len(), 169, "169 canonical combos");
@@ -370,6 +345,14 @@ fn full_deck_renders_every_combo_as_a_bare_token() {
     assert!(tokens.contains(&"AKs"));
     assert!(tokens.contains(&"AKo"));
     assert_eq!(RANKS.len(), 13);
+}
+
+// `RANKS`' ascending order is part of the crate's public contract — index equals rank
+// strength — rather than an implementation detail.
+#[rstest]
+fn ranks_is_ascending_two_to_ace() {
+    assert_eq!(RANKS[0], '2');
+    assert_eq!(RANKS[12], 'A');
 }
 
 #[rstest]
@@ -526,4 +509,67 @@ fn first_oversubscription_skips_past_an_under_assigned_hand() {
     assert_eq!(divergence.hand.to_combo(), "QQ");
     assert_eq!(divergence.assigned, 0.9);
     assert_eq!(divergence.available, 0.5);
+}
+
+#[rstest]
+fn combos_has_169_entries_round_tripping_to_1326_hands() {
+    assert_eq!(COMBOS.len(), 169);
+
+    let mut total_hands = 0;
+    for &combo in COMBOS.iter() {
+        let hands = Hand::from_combo(combo);
+        for hand in &hands {
+            assert_eq!(
+                hand.to_combo(),
+                combo,
+                "{hand} (from {combo}) must round-trip back to {combo}"
+            );
+        }
+        total_hands += hands.len();
+    }
+    assert_eq!(total_hands, 1326);
+}
+
+// `COMBOS`' matrix ordering and `Range::full`'s own (differently-ordered) enumeration must
+// never diverge in *content* — only in order, which each has its own reason to keep (see the
+// doc comments on both).
+#[rstest]
+fn combos_agrees_with_full_as_a_set() {
+    let combos: HashSet<&str> = COMBOS.iter().copied().collect();
+    let full_combos: HashSet<String> = Range::full()
+        .to_string()
+        .split(',')
+        .map(|token| token.to_string())
+        .collect();
+
+    assert_eq!(combos.len(), 169);
+    assert_eq!(full_combos.len(), 169);
+    assert!(combos.iter().all(|c| full_combos.contains(*c)));
+}
+
+// The mean-weight semantics: a combo with only some of its hands present (e.g. a board-blocked
+// suited combo missing one suit-combination) reads as the *average* over all of its
+// suit-combinations, not the max of the present ones.
+#[rstest]
+fn to_combo_weights_is_the_mean_over_all_suit_combinations() {
+    // `AKs` has 4 suit-combinations; only 2 are present here, each at weight 1.
+    let range = Range::from_hand_frequencies(vec![hf("AhKh", 1.0), hf("AsKs", 1.0)]);
+    let weights = range.to_combo_weights();
+    assert_eq!(weights.get("AKs").copied(), Some(2.0 / 4.0));
+}
+
+#[rstest]
+fn to_combo_weights_is_zero_for_a_fully_absent_combo() {
+    let range = Range::parse("QQ").unwrap();
+    let weights = range.to_combo_weights();
+    assert_eq!(weights.get("AKs").copied(), Some(0.0));
+    assert_eq!(weights.get("QQ").copied(), Some(1.0));
+}
+
+#[rstest]
+fn to_combo_weights_equals_the_shared_weight_for_a_suit_symmetric_range() {
+    let range = Range::parse("AKs:0.5,QQ").unwrap();
+    let weights = range.to_combo_weights();
+    assert_eq!(weights.get("AKs").copied(), Some(0.5));
+    assert_eq!(weights.get("QQ").copied(), Some(1.0));
 }

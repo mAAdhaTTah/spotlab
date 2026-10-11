@@ -4,7 +4,7 @@ use winnow::error::StrContext;
 use winnow::prelude::*;
 use winnow::token::take_while;
 
-use super::{Hand, RangeEntry};
+use super::{Hand, RangeEntry, SUITS};
 
 pub(super) fn rank(input: &mut &str) -> winnow::Result<char> {
     winnow::token::one_of([
@@ -41,10 +41,10 @@ pub(super) fn suit(input: &mut &str) -> winnow::Result<char> {
 ///
 /// Disjoint from [`combo`]: a hand always has a suit char in position 2 (`s`/`c`/`d`/`h`),
 /// where a combo has a second *rank*, so the two alternatives never both match a token. The
-/// grammar guarantees a well-formed token, so [`Hand::from_solver_token`] only canonicalizes here.
+/// grammar guarantees a well-formed token, so [`Hand::canonicalize`] only canonicalizes here.
 pub(super) fn hand(input: &mut &str) -> winnow::Result<Hand> {
     seq!(rank, suit, rank, suit)
-        .map(|(r1, s1, r2, s2)| Hand::from_solver_token(&format!("{r1}{s1}{r2}{s2}")))
+        .map(|(r1, s1, r2, s2)| Hand::canonicalize(&format!("{r1}{s1}{r2}{s2}")))
         .context(StrContext::Label("Hand"))
         .parse_next(input)
 }
@@ -133,8 +133,3 @@ pub(super) fn separator(input: &mut &str) -> winnow::Result<()> {
         .void()
         .parse_next(input)
 }
-
-pub(crate) const SUITS: [char; 4] = ['c', 'd', 'h', 's'];
-pub(crate) const RANKS: [char; 13] = [
-    'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
-];

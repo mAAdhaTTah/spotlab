@@ -1,83 +1,56 @@
-import { HandFrequency, PublicToActNode, RANKS } from "@/tauri/bindings";
-import { handsToComboMap, type PaintedCombo } from "./hand-range";
-import { round, sumActive } from "./range-weights";
+import { COMBOS } from "@spotlab/range";
+import { sumActive } from "./weights";
 
-// Stored frequencies are absolute — a share of the whole deck — while `Cell.w` is conditional:
-// each action's share of the combo's availability, summing to 100 across the node's actions.
-// This module is the only place the two conventions meet.
+export const COMBO_INDEX = new Map(
+  COMBOS.map((combo, index) => [combo, index]),
+);
 
-type BaseAction = { id: string; label: string };
-export type EditorAction =
-  | (BaseAction & { type: "fold" })
-  | (BaseAction & { type: "call" })
-  | (BaseAction & { type: "check" })
-  | (BaseAction & { type: "raise"; size: number });
+/**
+ * One matrix cell's painted state: `avail` is the combo's cap (its weight in the
+ * parent range the editor is splitting), `weights` are each action's conditional
+ * share of that cap, summing to 100 across the node's actions.
+ */
+export type EditorCell = { avail: number; weights: number[] };
 
-export type Cell = { avail: number; w: number[] };
-
-export const isPassive = (action: EditorAction) =>
-  action.type === "fold" || action.type === "check";
-
-export const passiveIndex = (actions: EditorAction[]) => {
-  const index = actions.findIndex(isPassive);
-  return index < 0 ? 0 : index;
+const rescaleOverflow = (weights: number[], passive: number): number[] => {
+  const next = weights.slice();
+  let active = sumActive(next, passive);
+  if (active > 100) {
+    const scale = 100 / active;
+    for (let k = 0; k < next.length; k++)
+      if (k !== passive) next[k] = Math.round(next[k] * scale);
+    active = sumActive(next, passive);
+  }
+  next[passive] = Math.max(0, 100 - active);
+  return next;
 };
 
-const comboLabel = (i: number, j: number): string =>
-  i === j
-    ? RANKS[i] + RANKS[i]
-    : j > i
-      ? RANKS[i] + RANKS[j] + "s"
-      : RANKS[j] + RANKS[i] + "o";
-
-const availFromRange = (
-  range: HandFrequency[] | null | undefined,
-): Map<string, number> | null => {
-  if (!range) return null;
-  return handsToComboMap(range);
-};
-
-export const seedStrategy = (
-  node: PublicToActNode,
-  actions: EditorAction[],
-): Cell[][] => {
-  const passive = passiveIndex(actions);
-  const playerRange = node.state.players.find(
-    (player) => player.name === node.player,
-  )?.range;
-  const avail = availFromRange(playerRange);
-  const actionRanges = actions.map((action) => {
-    const nodeAction = node.actions.find(
-      (candidate) => candidate.id === action.id,
-    );
-    return availFromRange(nodeAction?.range);
+/**
+ * Seed the 169-cell grid from a parent range's per-combo availability and each
+ * action's own per-combo range, both expressed as absolute weights (a share of
+ * the whole deck, as `toComboWeights` from `@spotlab/range` produces). `avail`
+ * of `null` means the combo is unconstrained (available at 1). `passive` must be
+ * a valid index into `actionWeights` naming the remainder action.
+ */
+export function seedCells(
+  avail: Map<string, number> | null,
+  actionWeights: (Map<string, number> | null)[],
+  passive: number,
+): EditorCell[] {
+  return COMBOS.map((combo) => {
+    const cap = avail ? (avail.get(combo) ?? 0) : 1;
+    const weights = actionWeights.map(() => 0);
+    if (cap <= 0) {
+      weights[passive] = 100;
+      return { avail: 0, weights };
+    }
+    actionWeights.forEach((range, ai) => {
+      const frequency = range?.get(combo) ?? 0;
+      weights[ai] = Math.round((frequency / cap) * 100);
+    });
+    return { avail: cap, weights: rescaleOverflow(weights, passive) };
   });
-
-  return RANKS.map((_, i) =>
-    RANKS.map((__, j) => {
-      const combo = comboLabel(i, j);
-      const cap = avail ? (avail.get(combo) ?? 0) : 1;
-      const w = actions.map(() => 0);
-      if (cap <= 0) {
-        w[passive] = 100;
-        return { avail: 0, w };
-      }
-      actions.forEach((_action, ai) => {
-        const frequency = actionRanges[ai]?.get(combo) ?? 0;
-        w[ai] = round((frequency / cap) * 100);
-      });
-      let active = sumActive(w, passive);
-      if (active > 100) {
-        const scale = 100 / active;
-        for (let k = 0; k < w.length; k++)
-          if (k !== passive) w[k] = round(w[k] * scale);
-        active = sumActive(w, passive);
-      }
-      w[passive] = Math.max(0, 100 - active);
-      return { avail: cap, w };
-    }),
-  );
-};
+}
 
 // Enough digits that the rounding error stays orders of magnitude below the backend's 1e-6
 // validation tolerance even once summed across a node's actions, while still collapsing the
@@ -88,57 +61,48 @@ export const seedStrategy = (
 // most 2·10⁻ᵈ: d=6 would give 2e-6, over the tolerance, while d=8 gives 2e-8.
 const FREQUENCY_DIGITS = 8;
 
-export const actionRange = (
-  strategy: Cell[][],
-  index: number,
-): PaintedCombo[] => {
-  const out: PaintedCombo[] = [];
-  for (let i = 0; i < 13; i++) {
-    for (let j = 0; j < 13; j++) {
-      const cell = strategy[i][j];
-      if (cell.avail <= 0) continue;
-      const total = cell.w.reduce((sum, value) => sum + value, 0);
-      if (!total) continue;
-      const frequency = Number(
-        ((cell.w[index] / total) * cell.avail).toFixed(FREQUENCY_DIGITS),
-      );
-      if (!frequency) continue;
-      out.push({ combo: comboLabel(i, j), frequency });
-    }
-  }
+/** Collapse one action's conditional weights back to absolute per-combo weights. */
+export function cellsToComboWeights(
+  cells: EditorCell[],
+  actionIndex: number,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  cells.forEach((cell, i) => {
+    if (cell.avail <= 0) return;
+    const total = cell.weights.reduce((sum, value) => sum + value, 0);
+    if (!total) return;
+    const frequency = Number(
+      ((cell.weights[actionIndex] / total) * cell.avail).toFixed(
+        FREQUENCY_DIGITS,
+      ),
+    );
+    if (!frequency) return;
+    out.set(COMBOS[i], frequency);
+  });
   return out;
-};
+}
 
-export const ingestRanges = (
-  strategy: Cell[][],
-  actions: EditorAction[],
-  ranges: (HandFrequency[] | null)[],
-): Cell[][] => {
-  const passive = passiveIndex(actions);
-  const comboMaps = ranges.map((range) =>
-    range ? handsToComboMap(range) : null,
-  );
-  return strategy.map((row, i) =>
-    row.map((cell, j) => {
-      const w = actions.map(() => 0);
-      if (cell.avail <= 0) {
-        w[passive] = 100;
-        return { avail: cell.avail, w };
-      }
-      const combo = comboLabel(i, j);
-      actions.forEach((_action, ai) => {
-        const frequency = comboMaps[ai]?.get(combo) ?? 0;
-        w[ai] = round((frequency / cell.avail) * 100);
-      });
-      let active = sumActive(w, passive);
-      if (active > 100) {
-        const scale = 100 / active;
-        for (let k = 0; k < w.length; k++)
-          if (k !== passive) w[k] = round(w[k] * scale);
-        active = sumActive(w, passive);
-      }
-      w[passive] = Math.max(0, 100 - active);
-      return { avail: cell.avail, w };
-    }),
-  );
-};
+/**
+ * Re-derive conditional cell weights from absolute per-action ranges — the
+ * inverse of `cellsToComboWeights`. `passive` must be a valid index into
+ * `actionWeights` naming the remainder action.
+ */
+export function comboWeightsToCells(
+  cells: EditorCell[],
+  actionWeights: (Map<string, number> | null)[],
+  passive: number,
+): EditorCell[] {
+  return cells.map((cell, i) => {
+    const weights = actionWeights.map(() => 0);
+    if (cell.avail <= 0) {
+      weights[passive] = 100;
+      return { avail: cell.avail, weights };
+    }
+    const combo = COMBOS[i];
+    actionWeights.forEach((range, ai) => {
+      const frequency = range?.get(combo) ?? 0;
+      weights[ai] = Math.round((frequency / cell.avail) * 100);
+    });
+    return { avail: cell.avail, weights: rescaleOverflow(weights, passive) };
+  });
+}

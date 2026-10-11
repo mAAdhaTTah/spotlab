@@ -1,0 +1,27 @@
+[package]
+name = "spotlab-range"
+version = "0.1.0"
+edition.workspace = true
+description = "A poker range-string parser and serializer: combo/hand grammar, canonical hand tokens, and weighted-range arithmetic"
+license.workspace = true
+repository.workspace = true
+keywords = ["poker", "range", "parser"]
+categories = ["parser-implementations"]
+readme = "README.md"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "indexmap/serde"]
+specta = ["serde", "dep:specta", "dep:specta-typescript"]
+
+[dependencies]
+winnow = "1.0.0"
+indexmap = "2"
+thiserror = "2.0.9"
+serde = { version = "1", features = ["derive"], optional = true }
+specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "function"], optional = true }
+specta-typescript = { version = "=0.0.12", optional = true }
+
+[dev-dependencies]
+rstest = "0.27.0"
+pretty_assertions = "1.4.1"

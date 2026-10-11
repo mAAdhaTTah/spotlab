@@ -1,4 +1,4 @@
-import { fixRound } from "./range-weights";
+import { fixRound } from "./weights";
 import { describe, expect, it } from "vitest";
 
 describe("fixRound", () => {

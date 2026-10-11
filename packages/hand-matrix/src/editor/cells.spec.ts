@@ -1,169 +1,108 @@
-import { actionRange, ingestRanges, seedStrategy } from "./range-conversion";
-import { combosToHands } from "./hand-range";
-import type {
-  Blinds,
-  HandFrequency,
-  NodeId,
-  PublicToActNode,
-} from "@/tauri/bindings";
-import { combos } from "../hand-matrix";
+import {
+  cellsToComboWeights,
+  comboWeightsToCells,
+  seedCells,
+  type EditorCell,
+} from "./cells";
+import { COMBOS } from "@spotlab/range";
 import { describe, expect, it } from "vitest";
 
 const FOLD = 0;
 const RAISE = 1;
 
-const range = (weights: Record<string, number>): HandFrequency[] =>
-  combosToHands(
-    Object.entries(weights).map(([combo, frequency]) => ({
-      combo,
-      frequency,
-    })),
-  );
+const weightsOf = (combos: Record<string, number>): Map<string, number> =>
+  new Map(Object.entries(combos));
 
-const state = { pot: 5 as Blinds, players: [], cause: "Start" };
+const cellFor = (cells: EditorCell[], combo: string) =>
+  cells[COMBOS.indexOf(combo)];
 
-const endNode = {
-  type: "PublicEndNode" as const,
-  id: "end-1",
-  label: "End",
-  state,
-};
+const weightOf = (weights: Map<string, number>, combo: string) =>
+  weights.get(combo);
 
-const raiseTarget: PublicToActNode = {
-  type: "PublicToActNode",
-  id: "node-2" as NodeId,
-  label: "SB",
-  player: "SB",
-  state,
-  actions: [],
-};
-
-const node = (
-  playerRange: HandFrequency[] | null,
-  foldRange: HandFrequency[] | null,
-  raiseRange: HandFrequency[] | null,
-): PublicToActNode => ({
-  type: "PublicToActNode",
-  id: "node-1" as NodeId,
-  label: "BB",
-  player: "BB",
-  state: {
-    pot: 5 as Blinds,
-    players: [{ name: "BB", stack: 100 as Blinds, range: playerRange }],
-    cause: "Start",
-  },
-  actions: [
-    {
-      type: "fold",
-      id: "fold-1",
-      range: foldRange,
-      next: { type: "end", next: endNode },
-    },
-    {
-      type: "raise",
-      id: "raise-1",
-      size: 5 as Blinds,
-      range: raiseRange,
-      next: raiseTarget,
-    },
-  ],
-});
-
-const actions = [
-  { id: "fold-1", type: "fold" as const, label: "Fold" },
-  { id: "raise-1", type: "raise" as const, label: "Raise", size: 5 },
-];
-
-const cellFor = (
-  strategy: { avail: number; w: number[] }[][],
-  combo: string,
-) => {
-  const index = combos.indexOf(combo);
-  return strategy[Math.floor(index / 13)][index % 13];
-};
-
-const frequencyFor = (
-  painted: { combo: string; frequency: number }[],
-  combo: string,
-) => painted.find((entry) => entry.combo === combo)?.frequency;
-
-describe("seedStrategy", () => {
+describe("seedCells", () => {
   it("divides the stored absolute frequency by the combo's availability", () => {
-    const strategy = seedStrategy(
-      node(range({ AKs: 0.5 }), range({ AKs: 0.25 }), range({ AKs: 0.25 })),
-      actions,
+    const cells = seedCells(
+      weightsOf({ AKs: 0.5 }),
+      [weightsOf({ AKs: 0.25 }), weightsOf({ AKs: 0.25 })],
+      FOLD,
     );
 
-    expect(cellFor(strategy, "AKs")).toEqual({ avail: 0.5, w: [50, 50] });
+    expect(cellFor(cells, "AKs")).toEqual({ avail: 0.5, weights: [50, 50] });
   });
 
   it("reads a stored frequency directly when the combo is fully available", () => {
-    const strategy = seedStrategy(
-      node(null, range({ AKs: 0.75 }), range({ AKs: 0.25 })),
-      actions,
+    const cells = seedCells(
+      null,
+      [weightsOf({ AKs: 0.75 }), weightsOf({ AKs: 0.25 })],
+      FOLD,
     );
 
-    expect(cellFor(strategy, "AKs")).toEqual({ avail: 1, w: [75, 25] });
+    expect(cellFor(cells, "AKs")).toEqual({ avail: 1, weights: [75, 25] });
   });
 
-  it("marks a combo outside the player's range dead and folds it", () => {
-    const strategy = seedStrategy(
-      node(range({ AKs: 1 }), null, range({ AKs: 1 })),
-      actions,
+  it("marks a combo outside the parent's availability dead and folds it", () => {
+    const cells = seedCells(
+      weightsOf({ AKs: 1 }),
+      [null, weightsOf({ AKs: 1 })],
+      FOLD,
     );
 
-    expect(cellFor(strategy, "72o")).toEqual({ avail: 0, w: [100, 0] });
+    expect(cellFor(cells, "72o")).toEqual({ avail: 0, weights: [100, 0] });
   });
 
   it("rescales when the stored frequencies exceed the combo's availability", () => {
-    const strategy = seedStrategy(
-      node(range({ AKs: 0.5 }), null, range({ AKs: 0.75 })),
-      actions,
+    const cells = seedCells(
+      weightsOf({ AKs: 0.5 }),
+      [null, weightsOf({ AKs: 0.75 })],
+      FOLD,
     );
 
-    expect(cellFor(strategy, "AKs")).toEqual({ avail: 0.5, w: [0, 100] });
+    expect(cellFor(cells, "AKs")).toEqual({ avail: 0.5, weights: [0, 100] });
   });
 });
 
-describe("actionRange", () => {
+describe("cellsToComboWeights", () => {
   it("multiplies the conditional weight by the combo's availability", () => {
-    const strategy = seedStrategy(
-      node(range({ AKs: 0.5 }), range({ AKs: 0.25 }), range({ AKs: 0.25 })),
-      actions,
+    const cells = seedCells(
+      weightsOf({ AKs: 0.5 }),
+      [weightsOf({ AKs: 0.25 }), weightsOf({ AKs: 0.25 })],
+      FOLD,
     );
 
-    expect(frequencyFor(actionRange(strategy, RAISE), "AKs")).toBe(0.25);
-    expect(frequencyFor(actionRange(strategy, FOLD), "AKs")).toBe(0.25);
+    expect(weightOf(cellsToComboWeights(cells, RAISE), "AKs")).toBe(0.25);
+    expect(weightOf(cellsToComboWeights(cells, FOLD), "AKs")).toBe(0.25);
   });
 
   it("skips dead combos", () => {
-    const strategy = seedStrategy(
-      node(range({ AKs: 1 }), null, range({ AKs: 1 })),
-      actions,
+    const cells = seedCells(
+      weightsOf({ AKs: 1 }),
+      [null, weightsOf({ AKs: 1 })],
+      FOLD,
     );
 
-    expect(frequencyFor(actionRange(strategy, RAISE), "72o")).toBeUndefined();
-    expect(frequencyFor(actionRange(strategy, FOLD), "72o")).toBeUndefined();
+    expect(weightOf(cellsToComboWeights(cells, RAISE), "72o")).toBeUndefined();
+    expect(weightOf(cellsToComboWeights(cells, FOLD), "72o")).toBeUndefined();
   });
 });
 
-describe("ingestRanges", () => {
-  it("divides the absolute frequencies rendered by actionRange back to the weights they came from", () => {
-    const seeded = seedStrategy(
-      node(
-        range({ AA: 1, AKs: 0.35, KK: 0.5 }),
-        range({ AA: 0.4, AKs: 0.245, KK: 0.1 }),
-        range({ AA: 0.6, AKs: 0.105, KK: 0.4 }),
-      ),
-      actions,
+describe("comboWeightsToCells", () => {
+  it("divides the absolute frequencies rendered by cellsToComboWeights back to the weights they came from", () => {
+    const seeded = seedCells(
+      weightsOf({ AA: 1, AKs: 0.35, KK: 0.5 }),
+      [
+        weightsOf({ AA: 0.4, AKs: 0.245, KK: 0.1 }),
+        weightsOf({ AA: 0.6, AKs: 0.105, KK: 0.4 }),
+      ],
+      FOLD,
     );
 
-    const ingested = ingestRanges(seeded, actions, [
-      null,
-      combosToHands(actionRange(seeded, RAISE)),
-    ]);
+    const ingested = comboWeightsToCells(
+      seeded,
+      [null, cellsToComboWeights(seeded, RAISE)],
+      FOLD,
+    );
 
-    expect(cellFor(seeded, "AKs")).toEqual({ avail: 0.35, w: [70, 30] });
+    expect(cellFor(seeded, "AKs")).toEqual({ avail: 0.35, weights: [70, 30] });
     expect(ingested).toEqual(seeded);
   });
 });

@@ -1,4 +1,4 @@
-//! The [`Hand`] newtype: the single owner of hand-token logic in `tree::range`.
+//! The [`Hand`] newtype: the single owner of hand-token logic in this crate.
 //!
 //! A `Hand` wraps a canonical 4-character `rank suit rank suit` token (e.g. `AhAs`) and is the
 //! sole construction/validation boundary for that grammar. Construction canonicalizes the suit
@@ -9,32 +9,46 @@
 use std::borrow::Borrow;
 use std::fmt;
 
+#[cfg(feature = "serde")]
 use serde::de::{self, Deserializer};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use specta_typescript::branded;
 
-use super::parser::{RANKS, SUITS};
-use super::RangeParseError;
+use super::{RangeParseError, RANKS, SUITS};
 
-branded!(
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-    pub struct Hand(String)
-);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct Hand(String);
+
+// Hand-expanded from `specta_typescript::branded!`, which declares the struct and implements
+// the trait in one invocation and so cannot sit behind a cfg without making `Hand` itself
+// conditional. Keep this in step with that macro's no-generics arm: the brand string and
+// `DataType` shape determine the generated TypeScript, which consumers may assert is unchanged.
+#[cfg(feature = "specta")]
+impl specta::Type for Hand {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        let ty = <String as specta::Type>::definition(types);
+        specta::datatype::DataType::Reference(specta::datatype::Reference::opaque(
+            specta_typescript::Branded::new(std::borrow::Cow::Borrowed("Hand"), ty),
+        ))
+    }
+}
 
 impl Hand {
     /// Validate the 4-char `rank suit rank suit` grammar and canonicalize suit ordering — the
-    /// construction boundary for a hand token from the range-string grammar or the IPC wire.
+    /// construction boundary for a hand token from the range-string grammar or the wire.
     /// Rejects a malformed token with [`RangeParseError::Invalid`].
-    pub(crate) fn parse(token: &str) -> Result<Self, RangeParseError> {
+    pub fn parse(token: &str) -> Result<Self, RangeParseError> {
         let combo = hand_to_combo(token)?;
         Ok(Self(canonicalize(token, &combo)))
     }
 
-    /// Normalize a trusted solver token (`show_hand_order` labels list a pair's two cards
-    /// highest-suit-first, the reverse of the canonical key) into canonical suit ordering,
-    /// returning the token unchanged when it is not a well-formed hand — there is no canonical
-    /// form to map a malformed token to, and the solver path must not error here.
-    pub(crate) fn from_solver_token(token: &str) -> Self {
+    /// Normalize a trusted-but-possibly-non-canonical token (e.g. a solver's `show_hand_order`
+    /// label, which lists a pair's two cards highest-suit-first, the reverse of the canonical
+    /// key) into canonical suit ordering, returning the token unchanged when it is not a
+    /// well-formed hand — there is no canonical form to map a malformed token to, and this path
+    /// must not error.
+    pub fn canonicalize(token: &str) -> Self {
         match hand_to_combo(token) {
             Ok(combo) => Self(canonicalize(token, &combo)),
             Err(_) => Self(token.to_string()),
@@ -42,27 +56,28 @@ impl Hand {
     }
 
     /// The combo this hand belongs to (e.g. `AsKd` → `AKo`, `QhQs` → `QQ`).
-    pub(crate) fn to_combo(&self) -> String {
-        // A `Hand` is a validated token except for `from_solver_token`'s malformed-input
+    pub fn to_combo(&self) -> String {
+        // A `Hand` is a validated token except for `canonicalize`'s malformed-input
         // fallback, which never reaches combo derivation; fall back to the raw token if it does.
         hand_to_combo(&self.0).unwrap_or_else(|_| self.0.clone())
     }
 
     /// Every concrete hand of a canonical combo (`QQ` → its 6 distinct-suit pairs, `AKs` → 4,
     /// `AKo` → 12), each already canonical. The inverse of [`Hand::to_combo`] over a whole combo.
-    pub(crate) fn from_combo(combo: &str) -> Vec<Hand> {
+    pub fn from_combo(combo: &str) -> Vec<Hand> {
         combo_to_hands(combo).into_iter().map(Hand).collect()
     }
 
-    pub(crate) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    pub(crate) fn into_inner(self) -> String {
+    pub fn into_inner(self) -> String {
         self.0
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for Hand {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -130,7 +145,7 @@ fn same_cards(a: &str, b: &str) -> bool {
 
 /// Resolve a 4-character hand token (e.g. `AsKd`) into its combo (e.g. `AKo`).
 ///
-/// `token` may be untrusted IPC input, so this validates length and each character against the
+/// `token` may be untrusted input, so this validates length and each character against the
 /// rank/suit grammar rather than slicing byte ranges unconditionally, returning
 /// [`RangeParseError::Invalid`] instead of panicking on malformed input.
 fn hand_to_combo(token: &str) -> Result<String, RangeParseError> {
