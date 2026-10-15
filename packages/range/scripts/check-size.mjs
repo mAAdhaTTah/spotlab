@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -13,7 +13,7 @@ function inlineModuleSize() {
 }
 
 function packedUnpackedSize() {
-  const stdout = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+  const stdout = execSync("npm pack --dry-run --json", {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     encoding: "utf8",
   });
