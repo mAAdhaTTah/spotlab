@@ -2,7 +2,7 @@ name: Release
 
 # Pushes to main either open/refresh the release PR (when changesets are pending) or, once that
 # PR has merged, publish what it versioned. Publishing is off until the repository variable
-# RELEASE_PUBLISH_ENABLED is set to "true"; see "Releasing" in README.md.
+# RELEASE_PUBLISH_ENABLED is set to "true"; see RELEASING.md.
 on:
   push:
     branches: [main]
@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     permissions:
@@ -91,6 +92,12 @@ jobs:
         uses: bruits/sampo/crates/sampo-github-action@cargo-sampo-github-action-v0.20.0
         with:
           command: auto
+          # Safety net behind the gate above: when publishing is disabled the action's publish path
+          # (reached if a pending changeset yields an empty plan, e.g. it names only ignored
+          # packages) is a dry run. This relies on sampo-github-action's prepare_release_pr
+          # ignoring dry-run while post_merge_publish honours it (checked at v0.20.0); re-check
+          # when bumping the action pin.
+          dry-run: ${{ steps.plan.outputs.publish != 'true' }}
           create-github-release: true
           cargo-token: ${{ steps.crates-io-auth.outputs.token }}
           npm-args: --provenance --no-git-checks

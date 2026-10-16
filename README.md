@@ -77,7 +77,7 @@ packages are `spotlab-range` (crates.io), `@spotlab/range` and
 Every change that affects a published package needs a changeset:
 
 ```
-cargo install sampo     # once; or use the npm package: pnpm dlx sampo add
+cargo install sampo --version 0.22.0 --locked   # once; or: pnpm dlx sampo@0.22.0 add
 sampo add
 ```
 
@@ -95,7 +95,8 @@ When changesets reach `main`, a workflow opens (and keeps updating) a release
 pull request that bumps versions, updates lockfiles and writes each package's
 `CHANGELOG.md`. Merging it publishes the new versions to crates.io and npm
 through trusted publishing (OIDC, with npm provenance), tags each package as
-`<name>@<version>` and creates a GitHub release.
+`<name>@<version>` and creates a GitHub release. Maintainers: see
+[RELEASING.md](RELEASING.md).
 
 ## License
 

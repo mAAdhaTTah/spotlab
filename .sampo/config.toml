@@ -1,7 +1,6 @@
 version = 1
 
 [git]
-default_branch = "main"
 tag_format = "{package_name}@{version}"
 
 [github]

@@ -36,7 +36,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepublishOnly": "node -e \"require('node:fs').accessSync('dist/index.js')\" || (echo 'dist/ is missing: run pnpm build before publishing' >&2 && exit 1)",
+    "prepublishOnly": "node -e \"if(!require('node:fs').existsSync('dist/index.js')){console.error('dist/ is missing: run pnpm build before publishing');process.exit(1)}\"",
     "build:wasm": "wasm-pack build ../../crates/spotlab-range-wasm --release --target web --out-name range --out-dir ../../packages/range/src/wasm",
     "build:inline": "node scripts/inline-wasm.mjs",
     "build:strip-wasm-url-fallback": "node scripts/strip-wasm-url-fallback.mjs",
