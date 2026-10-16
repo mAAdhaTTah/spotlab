@@ -1,0 +1,14 @@
+version = 1
+
+[git]
+tag_format = "{package_name}@{version}"
+
+[github]
+repository = "mAAdhaTTah/spotlab"
+
+[changelog]
+show_commit_hash = true
+show_acknowledgments = true
+
+[packages]
+ignore_unpublished = true

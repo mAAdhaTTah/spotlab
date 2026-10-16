@@ -1,0 +1,64 @@
+name: Release
+
+# Pushes to main either open/refresh the release PR (when changesets are pending) or, once that
+# PR has merged, publish what it versioned. See RELEASING.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # push tags, create GitHub releases, push the release branch
+      pull-requests: write # open and update the release PR
+      id-token: write # npm and crates.io trusted publishing (OIDC)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@wasm-pack
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: "package.json"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build npm packages
+        run: pnpm build
+
+      - name: Authenticate with crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Open the release PR or publish
+        uses: bruits/sampo/crates/sampo-github-action@cargo-sampo-github-action-v0.20.0
+        with:
+          command: auto
+          create-github-release: true
+          cargo-token: ${{ steps.crates-io-auth.outputs.token }}
+          npm-args: --provenance --no-git-checks
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

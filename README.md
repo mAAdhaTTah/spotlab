@@ -64,6 +64,40 @@ Early. `spotlab-range` is in use and tested, but nothing is published to
 crates.io or npm yet, and the API is not stable. Expect breaking changes until
 the first release.
 
+## Contributing
+
+Run the checks above before opening a pull request. Commit messages are free-form.
+
+### Releasing
+
+Releases are managed with [Sampo](https://github.com/bruits/sampo). The published
+packages are `spotlab-range` (crates.io), `@spotlab/range` and
+`@spotlab/hand-matrix` (npm), versioned independently.
+
+Every change that affects a published package needs a changeset:
+
+```
+cargo install sampo --version 0.22.0 --locked   # once; or: pnpm dlx sampo@0.22.0 add
+sampo add
+```
+
+This writes a markdown file to `.sampo/changesets/` naming each affected package
+(`cargo/spotlab-range`, `npm/@spotlab/range`, `npm/@spotlab/hand-matrix`), the
+bump level (patch, minor, major) and a user-facing description. Commit it with
+the change. Purely internal changes need no changeset.
+
+`@spotlab/range` bundles `spotlab-range` compiled to WebAssembly, but the
+manifests do not link them, so Sampo cannot see the relationship. When a
+changeset for `@spotlab/range` ships a new `spotlab-range` version, say so in
+its description, for example: "Bundles spotlab-range 0.2.0."
+
+When changesets reach `main`, a workflow opens (and keeps updating) a release
+pull request that bumps versions, updates lockfiles and writes each package's
+`CHANGELOG.md`. Merging it publishes the new versions to crates.io and npm
+through trusted publishing (OIDC, with npm provenance), tags each package as
+`<name>@<version>` and creates a GitHub release. Maintainers: see
+[RELEASING.md](RELEASING.md).
+
 ## License
 
 MIT — see `LICENSE`.

@@ -45,6 +45,7 @@
     "react-dom": "^19.0.0"
   },
   "scripts": {
+    "prepublishOnly": "node -e \"if(!require('node:fs').existsSync('dist/index.js')){console.error('dist/ is missing: run pnpm build before publishing');process.exit(1)}\"",
     "typecheck": "tsc -p tsconfig.json",
     "build:vite": "vite build",
     "build:css": "node scripts/copy-css.mjs",
