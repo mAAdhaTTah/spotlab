@@ -49,8 +49,9 @@ type GridPointerHandlers = {
 
 // Touch input implicitly captures the pointer to the event's target (the element it landed on), so
 // every later `pointermove` targets that element. Release it so the drag can travel. The
-// `hasPointerCapture` guard keeps `releasePointerCapture` from throwing on an id with no capture.
-// A pointer event's target is always an element; cast rather than narrowed with
+// `hasPointerCapture` guard matters: `releasePointerCapture` throws for a pointer id that isn't
+// active, as with a synthetic event from a test, where `hasPointerCapture` is simply false. A
+// pointer event's target is always an element; cast rather than narrowed with
 // `instanceof Element`, which fails for elements from another window (e.g. a popout).
 const releaseImplicitCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
   const target = event.target as Element;
