@@ -1,6 +1,6 @@
 //! Thin `wasm-bindgen` façade over [`spotlab_range`]. Every export returns plain JS values via
 //! `serde-wasm-bindgen` rather than wrapping the crate's own types, so the npm package can hand-
-//! author its public `.d.ts` (including the Zod brand on `Hand`) instead of fighting generated
+//! author its public `.d.ts` (including the type-only brand on `Hand`) instead of fighting generated
 //! bindings.
 //!
 //! This crate exists only so the native `spotlab-range` dependents (the Tauri backend) never
@@ -16,7 +16,17 @@ fn to_js_error(error: RangeParseError) -> JsValue {
 
 fn deserialize_hands(hands: JsValue) -> Result<Vec<HandFrequency>, JsValue> {
     serde_wasm_bindgen::from_value(hands)
-        .map_err(|error| to_js_error(RangeParseError::Invalid(error.to_string())))
+        .map_err(|error| to_js_error(RangeParseError::Invalid(error_message(error))))
+}
+
+/// The message of a `serde-wasm-bindgen` error. Its `Display` stringifies the wrapped JS `Error`
+/// (`"Error: missing field ..."`), so read the `Error`'s own `message` instead.
+fn error_message(error: serde_wasm_bindgen::Error) -> String {
+    let fallback = error.to_string();
+    JsValue::from(error)
+        .dyn_into::<js_sys::Error>()
+        .map(|error| String::from(error.message()))
+        .unwrap_or(fallback)
 }
 
 fn serialize(value: &impl serde::Serialize) -> JsValue {

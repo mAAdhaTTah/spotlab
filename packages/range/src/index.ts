@@ -21,8 +21,7 @@ export {
   RangeInitError,
   RangeNotInitializedError,
 } from "./errors.js";
-export { Hand } from "./types.js";
-export type { HandFrequency } from "./types.js";
+export type { Hand, HandFrequency } from "./types.js";
 
 /** Parse a range string into its expanded hand-keyed form. */
 export function parseRange(input: string): HandFrequency[] {

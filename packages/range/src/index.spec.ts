@@ -101,6 +101,19 @@ describe("parseRange / formatRange", () => {
       expect((error as SpotlabInputError).kind).toBe("invalid");
     }
   });
+
+  it("reports a boundary deserialization failure without an `Error: ` prefix", () => {
+    try {
+      formatRange([{ hand: "AsKd", weight: 1 }] as never);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(SpotlabInputError);
+      expect((error as SpotlabInputError).kind).toBe("invalid");
+      expect((error as SpotlabInputError).message).toBe(
+        "missing field `frequency`",
+      );
+    }
+  });
 });
 
 describe("combo helpers", () => {

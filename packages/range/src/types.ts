@@ -1,13 +1,14 @@
-import { z } from "zod";
-
 /**
  * A canonical 4-character hand token (e.g. `AsKd`), branded so a bare `string`
  * cannot be passed where a validated hand is required. Mirrors the Rust
- * crate's `Hand` newtype and the app's own hand-written brand in
- * `src/tauri/branded.ts`.
+ * crate's `Hand` newtype.
+ *
+ * Type-only: the brand has no runtime presence, so importing this package
+ * pulls in no validation library. Values come branded from this package's
+ * own exports (`parseRange`, `handsOfCombo`, ...); a consumer holding a token
+ * it has validated itself can cast (`token as Hand`).
  */
-export const Hand = z.string().brand("Hand");
-export type Hand = z.infer<typeof Hand>;
+export type Hand = string & { readonly __brand: "Hand" };
 
 /**
  * A single concrete hand mapped to its weight in `[0, 1]`. Mirrors the Rust
