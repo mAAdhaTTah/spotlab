@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, mocked, spyOn } from "storybook/test";
 import { HandMatrix } from "./hand-matrix";
-import { dragAcross, firePointer, labelFor } from "./fixtures";
+import { dragAcross, firePointer, labelFor, rootOf } from "./fixtures";
 
 const meta: Meta<typeof HandMatrix> = {
   component: HandMatrix,
@@ -9,12 +9,6 @@ const meta: Meta<typeof HandMatrix> = {
 
 export default meta;
 type Story = StoryObj<typeof HandMatrix>;
-
-const rootOf = (canvasElement: HTMLElement) => {
-  const root = canvasElement.querySelector<HTMLElement>(".spotlab-hm-root");
-  if (!root) throw new Error("expected a .spotlab-hm-root");
-  return root;
-};
 
 export const Default: Story = {
   async play({ canvas }) {

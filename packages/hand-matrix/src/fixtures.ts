@@ -1,3 +1,4 @@
+import { expect, mocked } from "storybook/test";
 import { COMBOS } from "@spotlab/range";
 import type { EditorCell } from "./editor/cells";
 import { seedCells } from "./editor/cells";
@@ -22,6 +23,65 @@ export const mockEditorCells: EditorCell[] = mockSeededCells.map((cell, i) =>
   i === mockCappedIndex ? { ...cell, avail: 0.5 } : cell,
 );
 
+/** `combo`'s weights in `cells`. */
+export const weightsOf = (cells: EditorCell[], combo: string) =>
+  cells[COMBOS.indexOf(combo)].weights;
+
+/** Every combo at `fallback`, except the combos in `overrides`. */
+export const cellsWith = (
+  fallback: EditorCell,
+  overrides: Record<string, EditorCell>,
+): EditorCell[] => COMBOS.map((combo) => overrides[combo] ?? fallback);
+
+/**
+ * Band colors as Chromium computes them (`rgb()`), so the editor's rendered
+ * gradients can be compared against them exactly.
+ */
+export const mockBandColors = {
+  red: "rgb(255, 0, 0)",
+  blue: "rgb(0, 0, 255)",
+  clear: "rgba(0, 0, 0, 0)",
+} as const;
+
+export const mockBandActions: EditorActionSpec[] = [
+  { id: "in", label: "In", color: mockBandColors.red },
+  { id: "out", label: "Out", color: mockBandColors.blue },
+];
+
+/**
+ * A cell band gradient as Chromium computes it, which expands a two-position
+ * stop (`transparent 50% 100%`) into two stops.
+ */
+export const gradient = (...stops: string[]) =>
+  `linear-gradient(to right, ${stops.join(", ")})`;
+
+/** The brush and stroke the painting stories drag across the editor. */
+export const mockPaintBrush = [0, 100];
+export const mockStroke = ["AA", mockCappedCombo, "AQs", "KQs"];
+
+/**
+ * Assert a drag through `mockStroke` painted each of its cells with
+ * `mockPaintBrush` in one change per cell, each building on the previous paint
+ * even though the controlled `cells` prop never updates, and left the rest
+ * untouched.
+ */
+export const expectStrokePainted = (onCellsChange: unknown) => {
+  const calls = mocked(onCellsChange as (cells: EditorCell[]) => void).mock
+    .calls;
+  expect(calls).toHaveLength(mockStroke.length);
+  const painted = calls.at(-1)![0];
+  for (const combo of mockStroke)
+    expect(weightsOf(painted, combo)).toEqual(mockPaintBrush);
+  expect(weightsOf(painted, "AJs")).toEqual(weightsOf(mockEditorCells, "AJs"));
+};
+
+/** The rendered `.spotlab-hm-root` under a story's canvas. */
+export const rootOf = (canvasElement: HTMLElement): HTMLElement => {
+  const root = canvasElement.querySelector<HTMLElement>(".spotlab-hm-root");
+  if (!root) throw new Error("expected a .spotlab-hm-root");
+  return root;
+};
+
 /** The rendered `.spotlab-hm-cell` for `combo` under `root`. */
 export const cellFor = (root: HTMLElement, combo: string): HTMLElement => {
   const cell = root.querySelector<HTMLElement>(
@@ -30,6 +90,14 @@ export const cellFor = (root: HTMLElement, combo: string): HTMLElement => {
   if (!cell) throw new Error(`expected a .spotlab-hm-cell for ${combo}`);
   return cell;
 };
+
+/**
+ * `combo`'s computed `background-image`. An uncapped cell's is its band
+ * gradient alone; a capped cell's has the cap border and hatching first and
+ * the band gradient last.
+ */
+export const backgroundImageOf = (root: HTMLElement, combo: string) =>
+  getComputedStyle(cellFor(root, combo)).backgroundImage;
 
 /** The label element inside `combo`'s cell — the innermost element a pointer lands on. */
 export const labelFor = (root: HTMLElement, combo: string): HTMLElement => {
