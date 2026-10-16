@@ -9,10 +9,9 @@ import type { EditorActionSpec } from "./weights";
  * capped cell that layer is already sized to the cell's `avail`, so the bands
  * are laid out relative to the layer, not scaled by `avail` a second time.
  * Whatever `order` leaves uncovered stays transparent rather than letting the
- * last band's color run on to the edge. Exported for tests; not part of the
- * package API.
+ * last band's color run on to the edge.
  */
-export const bandBackground = (
+const bandBackground = (
   cell: EditorCell,
   actions: EditorActionSpec[],
   order: number[],

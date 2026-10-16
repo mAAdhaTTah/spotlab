@@ -4,8 +4,10 @@ import { expect, fn, mocked, within } from "storybook/test";
 import { COMBOS } from "@spotlab/range";
 import { RangeMatrixEditor } from "./matrix-editor";
 import type { EditorCell } from "./cells";
+import type { EditorActionSpec } from "./weights";
 import type { PaintTool } from "./use-range-painting";
 import {
+  cellFor,
   dragAcross,
   firePointer,
   labelFor,
@@ -39,6 +41,75 @@ const rootOf = (canvasElement: HTMLElement) => {
 
 const weightsOf = (cells: EditorCell[], combo: string) =>
   cells[COMBOS.indexOf(combo)].weights;
+
+// Band gradients, read back as Chromium computes them: colors as `rgb()`, and
+// a two-position stop (`transparent 50% 100%`) expanded into two stops.
+const bandActions: EditorActionSpec[] = [
+  { id: "in", label: "In", color: "rgb(255, 0, 0)" },
+  { id: "out", label: "Out", color: "rgb(0, 0, 255)" },
+];
+const RED = "rgb(255, 0, 0)";
+const BLUE = "rgb(0, 0, 255)";
+const CLEAR = "rgba(0, 0, 0, 0)";
+const gradient = (...stops: string[]) =>
+  `linear-gradient(to right, ${stops.join(", ")})`;
+
+const cellsWith = (
+  fallback: EditorCell,
+  overrides: Record<string, EditorCell>,
+): EditorCell[] => COMBOS.map((combo) => overrides[combo] ?? fallback);
+
+/** The cell's band layer: its whole background, or a capped cell's last layer. */
+const bandLayerOf = (root: HTMLElement, combo: string) =>
+  getComputedStyle(cellFor(root, combo)).backgroundImage;
+
+// `order` covers only the first action, so whatever weight it leaves stays
+// transparent rather than taking the last band's color.
+export const PartialOrderBands: Story = {
+  args: {
+    actions: bandActions,
+    order: [0],
+    cells: cellsWith(
+      { avail: 1, weights: [50, 50] },
+      {
+        KK: { avail: 1, weights: [0, 100] },
+        // A capped cell's band layer is already sized to `avail`, so its bands
+        // span that layer instead of being scaled by `avail` again.
+        AKs: { avail: 0.5, weights: [100, 0] },
+        AQs: { avail: 0.5, weights: [50, 50] },
+      },
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const root = rootOf(canvasElement);
+    expect(bandLayerOf(root, "AA")).toBe(
+      gradient(`${RED} 0%`, `${RED} 50%`, `${CLEAR} 50%`, `${CLEAR} 100%`),
+    );
+    expect(bandLayerOf(root, "KK")).toBe("none");
+    expect(
+      bandLayerOf(root, "AKs").endsWith(gradient(`${RED} 0%`, `${RED} 100%`)),
+    ).toBe(true);
+    expect(
+      bandLayerOf(root, "AQs").endsWith(
+        gradient(`${RED} 0%`, `${RED} 50%`, `${CLEAR} 50%`, `${CLEAR} 100%`),
+      ),
+    ).toBe(true);
+  },
+};
+
+// Bands that fill the cell end exactly at 100%, with no transparent tail.
+export const FullOrderBands: Story = {
+  args: {
+    actions: bandActions,
+    order: [1, 0],
+    cells: cellsWith({ avail: 1, weights: [30, 70] }, {}),
+  },
+  play: async ({ canvasElement }) => {
+    expect(bandLayerOf(rootOf(canvasElement), "AA")).toBe(
+      gradient(`${BLUE} 0%`, `${BLUE} 70%`, `${RED} 70%`, `${RED} 100%`),
+    );
+  },
+};
 
 export const PartiallyCapped: Story = {
   play: async ({ canvasElement }) => {
