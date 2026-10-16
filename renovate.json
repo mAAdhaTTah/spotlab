@@ -3,7 +3,6 @@
   "extends": ["config:recommended"],
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dashboard",
-  "labels": ["renovate"],
   "configMigration": true,
   "prHourlyLimit": 0,
   "minimumReleaseAge": "3 days",
