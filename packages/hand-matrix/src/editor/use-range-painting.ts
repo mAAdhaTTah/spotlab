@@ -23,13 +23,13 @@ export function useRangePainting(opts: {
 }) {
   const { cells, brush, tool, onCellsChange, onBrushChange, onToolChange } =
     opts;
-  // The in-progress stroke's end listeners; non-null exactly while painting. The stroke attaches
-  // them itself when it starts, rather than relying on a mount effect having run by the first
-  // pointerdown (a production render doesn't guarantee that).
-  const strokeRef = useRef<AbortController | null>(null);
+  // Aborts the in-progress stroke's end listeners; non-null exactly while painting. The stroke
+  // attaches them itself when it starts, rather than relying on a mount effect having run by the
+  // first pointerdown (a production render doesn't guarantee that).
+  const strokeAbortControllerRef = useRef<AbortController | null>(null);
   const endStroke = useCallback(() => {
-    strokeRef.current?.abort();
-    strokeRef.current = null;
+    strokeAbortControllerRef.current?.abort();
+    strokeAbortControllerRef.current = null;
   }, []);
   useEffect(() => endStroke, [endStroke]);
 
@@ -70,13 +70,13 @@ export function useRangePainting(opts: {
         return;
       }
       endStroke();
-      const stroke = new AbortController();
-      strokeRef.current = stroke;
+      const strokeAbortController = new AbortController();
+      strokeAbortControllerRef.current = strokeAbortController;
       window.addEventListener("pointerup", endStroke, {
-        signal: stroke.signal,
+        signal: strokeAbortController.signal,
       });
       window.addEventListener("pointercancel", endStroke, {
-        signal: stroke.signal,
+        signal: strokeAbortController.signal,
       });
       paintCell(combo);
     },
@@ -85,7 +85,8 @@ export function useRangePainting(opts: {
 
   const onCellEnter = useCallback(
     (combo: string) => {
-      if (strokeRef.current && tool === "brush") paintCell(combo);
+      if (strokeAbortControllerRef.current && tool === "brush")
+        paintCell(combo);
     },
     [tool, paintCell],
   );
