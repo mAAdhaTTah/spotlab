@@ -47,20 +47,15 @@ type GridPointerHandlers = {
   onPointerEnter?: CellPointerHandler;
 };
 
-// Touch input implicitly captures the pointer to the element it started on, so every later
-// `pointermove` targets that element. Release it (from the hit element and the cell, whichever
-// holds it) so the drag can travel. The `hasPointerCapture` guard also keeps
-// `releasePointerCapture` from throwing on an id that holds no capture. Duck-typed rather than
+// Touch input implicitly captures the pointer to the event's target (the element it landed on), so
+// every later `pointermove` targets that element. Release it so the drag can travel. The
+// `hasPointerCapture` guard keeps `releasePointerCapture` from throwing on an id with no capture.
+// A pointer event's target is always an element; cast rather than narrowed with
 // `instanceof Element`, which fails for elements from another window (e.g. a popout).
 const releaseImplicitCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
-  const { pointerId, target, currentTarget } = event;
-  for (const el of new Set<EventTarget>([target, currentTarget])) {
-    const holder = el as Partial<
-      Pick<Element, "hasPointerCapture" | "releasePointerCapture">
-    >;
-    if (holder.hasPointerCapture?.(pointerId)) {
-      holder.releasePointerCapture?.(pointerId);
-    }
+  const target = event.target as Element;
+  if (target.hasPointerCapture(event.pointerId)) {
+    target.releasePointerCapture(event.pointerId);
   }
 };
 
