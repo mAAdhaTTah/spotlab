@@ -1,14 +1,12 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
+import { mockOopFlopRange } from "./fixtures";
 import { RangeGrid } from "./range-grid";
-
-const mockOopFlopRange = "AA,KK:1,AKs,AKo:0.5,QQ:0.25";
 
 const meta: Meta<typeof RangeGrid> = {
   component: RangeGrid,
   args: {
     range: mockOopFlopRange,
-    className: "w-[420px]",
   },
 };
 
@@ -33,7 +31,6 @@ function findCell(canvas: ReturnType<typeof within>, combo: string): Element {
 export const HostileTheme: Story = {
   args: {
     range: mockOopFlopRange,
-    className: "w-[420px]",
   },
   decorators: [
     (Story) => (
@@ -79,7 +76,7 @@ export const HostileTheme: Story = {
 export const ClassNameTheme: Story = {
   args: {
     range: mockOopFlopRange,
-    className: "w-[420px] spotlab-classname-theme-demo",
+    className: "spotlab-classname-theme-demo",
   },
   decorators: [
     (Story) => (

@@ -23,4 +23,4 @@ the wasm-bindgen shim consumed by the `@spotlab/range` npm package).
 
 ## License
 
-MIT — see `LICENSE` at the repository root.
+MIT — see `LICENSE`.

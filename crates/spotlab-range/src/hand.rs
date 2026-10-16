@@ -38,6 +38,16 @@ impl Hand {
     /// Validate the 4-char `rank suit rank suit` grammar and canonicalize suit ordering — the
     /// construction boundary for a hand token from the range-string grammar or the wire.
     /// Rejects a malformed token with [`RangeParseError::Invalid`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Hand;
+    ///
+    /// assert_eq!(Hand::parse("AsKd").unwrap().as_str(), "AsKd");
+    /// assert_eq!(Hand::parse("AsAh").unwrap().as_str(), "AhAs");
+    /// assert!(Hand::parse("AKs").is_err());
+    /// ```
     pub fn parse(token: &str) -> Result<Self, RangeParseError> {
         let combo = hand_to_combo(token)?;
         Ok(Self(canonicalize(token, &combo)))
@@ -48,6 +58,15 @@ impl Hand {
     /// key) into canonical suit ordering, returning the token unchanged when it is not a
     /// well-formed hand — there is no canonical form to map a malformed token to, and this path
     /// must not error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Hand;
+    ///
+    /// assert_eq!(Hand::canonicalize("AsAh").as_str(), "AhAs");
+    /// assert_eq!(Hand::canonicalize("junk").as_str(), "junk");
+    /// ```
     pub fn canonicalize(token: &str) -> Self {
         match hand_to_combo(token) {
             Ok(combo) => Self(canonicalize(token, &combo)),
@@ -56,6 +75,16 @@ impl Hand {
     }
 
     /// The combo this hand belongs to (e.g. `AsKd` → `AKo`, `QhQs` → `QQ`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Hand;
+    ///
+    /// assert_eq!(Hand::parse("AsKd").unwrap().to_combo(), "AKo");
+    /// assert_eq!(Hand::parse("QhQs").unwrap().to_combo(), "QQ");
+    /// assert_eq!(Hand::parse("9h8h").unwrap().to_combo(), "98s");
+    /// ```
     pub fn to_combo(&self) -> String {
         // A `Hand` is a validated token except for `canonicalize`'s malformed-input
         // fallback, which never reaches combo derivation; fall back to the raw token if it does.
@@ -64,14 +93,43 @@ impl Hand {
 
     /// Every concrete hand of a canonical combo (`QQ` → its 6 distinct-suit pairs, `AKs` → 4,
     /// `AKo` → 12), each already canonical. The inverse of [`Hand::to_combo`] over a whole combo.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Hand;
+    ///
+    /// assert_eq!(Hand::from_combo("QQ").len(), 6);
+    /// assert_eq!(Hand::from_combo("AKs").len(), 4);
+    /// assert_eq!(Hand::from_combo("AKo").len(), 12);
+    /// ```
     pub fn from_combo(combo: &str) -> Vec<Hand> {
         combo_to_hands(combo).into_iter().map(Hand).collect()
     }
 
+    /// The canonical 4-character token as a string slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Hand;
+    ///
+    /// assert_eq!(Hand::parse("AsKd").unwrap().as_str(), "AsKd");
+    /// ```
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consume the hand, returning its canonical 4-character token.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Hand;
+    ///
+    /// let token: String = Hand::parse("AsKd").unwrap().into_inner();
+    /// assert_eq!(token, "AsKd");
+    /// ```
     pub fn into_inner(self) -> String {
         self.0
     }

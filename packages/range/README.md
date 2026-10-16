@@ -56,4 +56,4 @@ straightforward and worth doing for a real use case.
 
 ## License
 
-MIT — see `LICENSE` at the repository root.
+MIT — see `LICENSE`.

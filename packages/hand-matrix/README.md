@@ -107,4 +107,4 @@ when `fill` is omitted.
 
 ## License
 
-MIT — see `LICENSE` at the repository root.
+MIT — see `LICENSE`.

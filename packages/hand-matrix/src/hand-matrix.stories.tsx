@@ -1,11 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent } from "storybook/test";
 import { HandMatrix } from "./hand-matrix";
 
 const meta: Meta<typeof HandMatrix> = {
   component: HandMatrix,
   args: {
-    className: "w-[400px]",
     onClick: fn(),
     onMouseDown: fn(),
     onMouseEnter: fn(),

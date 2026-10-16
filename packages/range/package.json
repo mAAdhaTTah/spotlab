@@ -6,8 +6,21 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://git.8p.jamesdigioia.com/mAAdhaTTah/strategy-builder"
+    "url": "https://github.com/mAAdhaTTah/spotlab",
+    "directory": "packages/range"
   },
+  "homepage": "https://github.com/mAAdhaTTah/spotlab/tree/main/packages/range#readme",
+  "bugs": {
+    "url": "https://github.com/mAAdhaTTah/spotlab/issues"
+  },
+  "author": "James DiGioia",
+  "keywords": [
+    "poker",
+    "range",
+    "parser",
+    "wasm",
+    "texas-holdem"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
@@ -19,7 +32,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build:wasm": "wasm-pack build ../../crates/spotlab-range-wasm --release --target web --out-name range --out-dir ../../packages/range/src/wasm",
@@ -39,5 +53,8 @@
     "vite": "^8.3.1",
     "vite-plugin-dts": "^5.1.2",
     "vitest": "^4.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

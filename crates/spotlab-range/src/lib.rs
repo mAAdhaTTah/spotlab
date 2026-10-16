@@ -1,3 +1,20 @@
+//! A poker range-string parser and serializer.
+//!
+//! # Examples
+//!
+//! ```
+//! use spotlab_range::Range;
+//!
+//! let range = Range::parse("QQ, AKs, AKo:0.5").unwrap();
+//! assert_eq!(range.hand_frequency("QhQs"), 1.0);
+//! assert_eq!(range.hand_frequency("AsKd"), 0.5);
+//! assert_eq!(range.to_string(), "QQ,AKs,AKo:0.5");
+//!
+//! let per_combo = range.to_combo_weights();
+//! assert_eq!(per_combo["AKs"], 1.0);
+//! assert_eq!(per_combo["72o"], 0.0);
+//! ```
+
 use std::fmt;
 use std::ops::AddAssign;
 
@@ -34,6 +51,16 @@ pub use hand::Hand;
 /// be in `[0, 1]`. Off the IPC wire this is enforced by the custom [`Deserialize`] impl (a
 /// malformed hand fails [`Hand`]'s own deserialization; an out-of-range frequency fails here), so
 /// [`Range`] always receives already-known-valid data.
+///
+/// # Examples
+///
+/// ```
+/// use spotlab_range::{Hand, HandFrequency};
+///
+/// let hand = Hand::parse("AsKd").unwrap();
+/// assert!(HandFrequency::try_from((hand.clone(), 0.5)).is_ok());
+/// assert!(HandFrequency::try_from((hand, 1.5)).is_err());
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -149,6 +176,20 @@ impl Range {
     /// `raw` is synthesized as `format!("{frequency}")` so a hand built this way still reproduces
     /// a byte-faithful wire format (a weight-1 hand renders as the bare token `1`) —
     /// [`HandFrequency`] carries no source text of its own.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::{Hand, HandFrequency, Range};
+    ///
+    /// let range = Range::from_hand_frequencies([
+    ///     HandFrequency::try_from((Hand::parse("AsKd").unwrap(), 0.5)).unwrap(),
+    ///     HandFrequency::try_from((Hand::parse("QhQs").unwrap(), 0.0)).unwrap(),
+    /// ]);
+    /// assert_eq!(range.hand_frequency("AsKd"), 0.5);
+    /// assert_eq!(range.hand_frequency("QhQs"), 0.0);
+    /// assert_eq!(range.to_string(), "AsKd:0.5");
+    /// ```
     pub fn from_hand_frequencies<I>(hands: I) -> Self
     where
         I: IntoIterator<Item = HandFrequency>,
@@ -177,6 +218,16 @@ impl Range {
     /// enumeration's order — and therefore the resulting `Range`'s `IndexMap` insertion order,
     /// load-bearing for deterministic sampling and canonical rendering — stays `AA, AKs, AKo,
     /// AQs, AQo, …` regardless of `RANKS`'s own direction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let range = Range::full();
+    /// assert_eq!(range.to_hand_frequencies().len(), 1326);
+    /// assert_eq!(range.hand_frequency("AsKd"), 1.0);
+    /// ```
     pub fn full() -> Range {
         let mut combos = Vec::with_capacity(169);
         for high_index in (0..RANKS.len()).rev() {
@@ -212,6 +263,21 @@ impl Range {
     ///
     /// A hand/combo with an explicit `:0` weight is *dropped* — a 0% entry is not in the range, so
     /// it is never stored. A bare token (no `:freq`, weight 1) is kept.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let range = Range::parse("QQ, AKs:0.25, AsKd").unwrap();
+    /// assert_eq!(range.hand_frequency("QcQd"), 1.0);
+    /// assert_eq!(range.hand_frequency("AhKh"), 0.25);
+    /// assert_eq!(range.hand_frequency("AsKd"), 1.0);
+    ///
+    /// assert!(Range::parse("").unwrap().is_empty());
+    /// assert!(Range::parse("AKs:1.5").is_err());
+    /// assert!(Range::parse("ZZ").is_err());
+    /// ```
     pub fn parse(input: &str) -> Result<Self, RangeParseError> {
         let entries = parser::hand_range
             .parse(input.trim())
@@ -234,11 +300,31 @@ impl Range {
 
     /// An empty range contributes nothing to a weighted pick, so dealing/validation treat it the
     /// same as absent ("no range set").
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// assert!(Range::default().is_empty());
+    /// assert!(Range::parse("  ").unwrap().is_empty());
+    /// assert!(!Range::parse("AA").unwrap().is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
     /// Weight for a concrete 4-character hand token, or `0.0` when the hand is absent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let range = Range::parse("AKo:0.5").unwrap();
+    /// assert_eq!(range.hand_frequency("AsKd"), 0.5);
+    /// assert_eq!(range.hand_frequency("AsKs"), 0.0);
+    /// ```
     pub fn hand_frequency(&self, hand: &str) -> f64 {
         self.entries
             .get(hand)
@@ -250,6 +336,17 @@ impl Range {
     /// hand), or `None` when the hand is absent — the raw-text counterpart to
     /// [`Range::hand_frequency`]'s parsed weight. `hand` must already be a canonical [`Hand`]
     /// key; a non-canonical key reads back as absent, like a genuinely absent hand.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::{Hand, Range};
+    ///
+    /// let range = Range::parse("AKo:0.50").unwrap();
+    /// let hand = Hand::parse("AsKd").unwrap();
+    /// assert_eq!(range.raw_weight(&hand), Some("0.50"));
+    /// assert_eq!(range.raw_weight(&Hand::parse("AsKs").unwrap()), None);
+    /// ```
     pub fn raw_weight(&self, hand: &Hand) -> Option<&str> {
         self.entries.get(hand).map(|entry| entry.raw.as_str())
     }
@@ -276,6 +373,16 @@ impl Range {
     /// fractional values, not adversarially-chosen floats, and the 1e-6 bucket width is ~10x
     /// the observed ~1e-7 solver noise floor, so a real round-trip landing exactly on a midpoint
     /// is not expected in practice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let noisy = Range::parse("AsKd:0.99999994").unwrap();
+    /// let clean = Range::parse("AsKd").unwrap();
+    /// assert_eq!(noisy.canonical_weights(), clean.canonical_weights());
+    /// ```
     pub fn canonical_weights(&self) -> String {
         let mut hands: Vec<(&Hand, f64)> = self
             .entries
@@ -297,6 +404,19 @@ impl Range {
     /// The range's [`HandFrequency`] pairs in insertion order — the single hand-weight accessor,
     /// feeding both a wire surface and an internal dealing/weight path. An empty range yields an
     /// empty `Vec` (distinct from `None`, "no range").
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let range = Range::parse("AsKs:0.5, QhQs").unwrap();
+    /// let pairs = range.to_hand_frequencies();
+    /// assert_eq!(pairs.len(), 2);
+    /// assert_eq!(pairs[0].hand.as_str(), "AsKs");
+    /// assert_eq!(pairs[0].frequency, 0.5);
+    /// assert!(Range::default().to_hand_frequencies().is_empty());
+    /// ```
     pub fn to_hand_frequencies(&self) -> Vec<HandFrequency> {
         self.entries
             .iter()
@@ -318,6 +438,17 @@ impl Range {
     /// equals it; `max` is only correct in that narrower case. This is the single canonical
     /// combo collapse — anything downstream that needs "weight per combo" should use this rather
     /// than re-deriving it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let weights = Range::parse("AsKs, AhKh").unwrap().to_combo_weights();
+    /// assert_eq!(weights.len(), 169);
+    /// assert_eq!(weights["AKs"], 0.5);
+    /// assert_eq!(weights["AA"], 0.0);
+    /// ```
     pub fn to_combo_weights(&self) -> IndexMap<String, f64> {
         COMBOS
             .iter()
@@ -335,6 +466,17 @@ impl Range {
     /// Whether `self` and `other` assign the same weight to every hand, within
     /// [`WEIGHT_TOLERANCE`]. Built on [`Range::first_divergence`], so a hand present in only one
     /// range still counts as a difference.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let a = Range::parse("AKs:0.5").unwrap();
+    /// let b = Range::parse("AKs:0.5000001").unwrap();
+    /// assert!(a.approx_eq(&b));
+    /// assert!(!a.approx_eq(&Range::parse("AKs").unwrap()));
+    /// ```
     pub fn approx_eq(&self, other: &Range) -> bool {
         self.first_divergence(std::iter::once(other), WEIGHT_TOLERANCE)
             .is_none()
@@ -342,6 +484,20 @@ impl Range {
 
     /// The first hand whose summed weight across `parts` differs from this range's weight for
     /// that hand by more than `tolerance`, in either direction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::{Range, WEIGHT_TOLERANCE};
+    ///
+    /// let whole = Range::parse("AsKs").unwrap();
+    /// let part = Range::parse("AsKs:0.5").unwrap();
+    /// let divergence = whole.first_divergence([&part], WEIGHT_TOLERANCE).unwrap();
+    /// assert_eq!(divergence.hand.as_str(), "AsKs");
+    /// assert_eq!(divergence.available, 1.0);
+    /// assert_eq!(divergence.assigned, 0.5);
+    /// assert!(whole.first_divergence([&whole], WEIGHT_TOLERANCE).is_none());
+    /// ```
     pub fn first_divergence<'a>(
         &self,
         parts: impl IntoIterator<Item = &'a Range>,
@@ -356,6 +512,20 @@ impl Range {
     /// hand by more than `tolerance`. Distinct from [`Range::first_divergence`] because a hand
     /// may legally be under-assigned (the remainder folds) while a later hand is over-assigned —
     /// a single either-direction scan would stop at the legal one and miss the violation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::{Range, WEIGHT_TOLERANCE};
+    ///
+    /// let whole = Range::parse("AsKs").unwrap();
+    /// let under = Range::parse("AsKs:0.5").unwrap();
+    /// let over = Range::parse("AsKs:0.75").unwrap();
+    /// assert!(whole.first_oversubscription([&under], WEIGHT_TOLERANCE).is_none());
+    /// assert!(whole
+    ///     .first_oversubscription([&over, &over], WEIGHT_TOLERANCE)
+    ///     .is_some());
+    /// ```
     pub fn first_oversubscription<'a>(
         &self,
         parts: impl IntoIterator<Item = &'a Range>,
@@ -423,6 +593,17 @@ impl AddAssign<&Range> for Range {
     /// Fold `other` into this range: a hand present in both keeps the summed weight, capped at
     /// `1`. Used when, for example, an action is removed and the range it held has to survive on
     /// a sibling action rather than be dropped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let mut range = Range::parse("AsKs:0.5").unwrap();
+    /// range += &Range::parse("AsKs:0.75, QhQs").unwrap();
+    /// assert_eq!(range.hand_frequency("AsKs"), 1.0);
+    /// assert_eq!(range.hand_frequency("QhQs"), 1.0);
+    /// ```
     fn add_assign(&mut self, other: &Range) {
         for (hand, entry) in &other.entries {
             let weight = (self.hand_frequency(hand.as_str()) + entry.weight).min(1.0);

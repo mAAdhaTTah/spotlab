@@ -4,7 +4,8 @@ members = ["crates/*"]
 
 [workspace.package]
 license = "MIT"
-repository = "https://git.8p.jamesdigioia.com/mAAdhaTTah/strategy-builder"
+repository = "https://github.com/mAAdhaTTah/spotlab"
+homepage = "https://github.com/mAAdhaTTah/spotlab"
 edition = "2021"
 
 [profile.release]

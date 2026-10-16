@@ -5,9 +5,11 @@ edition.workspace = true
 description = "A poker range-string parser and serializer: combo/hand grammar, canonical hand tokens, and weighted-range arithmetic"
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 keywords = ["poker", "range", "parser"]
 categories = ["parser-implementations"]
 readme = "README.md"
+include = ["src/**/*.rs", "README.md", "LICENSE"]
 
 [features]
 default = ["serde"]

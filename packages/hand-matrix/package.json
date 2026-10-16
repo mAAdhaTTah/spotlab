@@ -6,8 +6,22 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://git.8p.jamesdigioia.com/mAAdhaTTah/strategy-builder"
+    "url": "https://github.com/mAAdhaTTah/spotlab",
+    "directory": "packages/hand-matrix"
   },
+  "homepage": "https://github.com/mAAdhaTTah/spotlab/tree/main/packages/hand-matrix#readme",
+  "bugs": {
+    "url": "https://github.com/mAAdhaTTah/spotlab/issues"
+  },
+  "author": "James DiGioia",
+  "keywords": [
+    "poker",
+    "range",
+    "hand-matrix",
+    "react",
+    "component",
+    "texas-holdem"
+  ],
   "sideEffects": [
     "*.css"
   ],
@@ -22,10 +36,11 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "peerDependencies": {
-    "@spotlab/range": "workspace:*",
+    "@spotlab/range": "workspace:^",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -34,17 +49,30 @@
     "build:vite": "vite build",
     "build:css": "node scripts/copy-css.mjs",
     "build": "pnpm typecheck && pnpm build:vite && pnpm build:css",
-    "test": "vitest run"
+    "test": "vitest run --project unit",
+    "storybook": "storybook dev -p 6007",
+    "build-storybook": "storybook build",
+    "test-storybook": "vitest run --project storybook"
   },
   "devDependencies": {
     "@spotlab/range": "workspace:*",
+    "@storybook/addon-vitest": "^10.5.5",
+    "@storybook/react-vite": "^10.5.5",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.0",
+    "@vitest/browser": "^4.1.4",
+    "@vitest/browser-playwright": "4.1.11",
+    "playwright": "^1.49.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "storybook": "^10.5.5",
     "typescript": "^6.0.0",
     "vite": "^8.3.1",
     "vite-plugin-dts": "^5.1.2",
     "vitest": "^4.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

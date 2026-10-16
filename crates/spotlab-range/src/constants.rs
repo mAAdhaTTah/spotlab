@@ -1,6 +1,15 @@
 //! The crate's public constants: the suit and rank alphabets used by the parser and [`Hand`](crate::Hand),
 //! the matrix-ordered combo list, and the shared weight-comparison tolerance.
 
+/// The four suits, in the order hands use to canonicalize suit ordering.
+///
+/// # Examples
+///
+/// ```
+/// use spotlab_range::SUITS;
+///
+/// assert_eq!(SUITS, ['c', 'd', 'h', 's']);
+/// ```
 pub const SUITS: [char; 4] = ['c', 'd', 'h', 's'];
 
 /// Ascending `'2'`..`'A'` — this order is part of the crate's public contract (see the crate
@@ -10,6 +19,15 @@ pub const SUITS: [char; 4] = ['c', 'd', 'h', 's'];
 /// every full-deck `Range`'s `IndexMap` insertion order, load-bearing for deterministic
 /// sampling and canonical rendering) unchanged; any other consumer enumerating the deck by
 /// iterating `RANKS` directly gets ascending order.
+///
+/// # Examples
+///
+/// ```
+/// use spotlab_range::RANKS;
+///
+/// assert_eq!(RANKS[0], '2');
+/// assert_eq!(RANKS[12], 'A');
+/// ```
 pub const RANKS: [char; 13] = [
     '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A',
 ];
@@ -25,6 +43,17 @@ pub const RANKS: [char; 13] = [
 /// sampling, canonical rendering); `COMBOS` exists only to give a matrix-shaped consumer (a UI
 /// grid, a flat per-combo array) the ordering it actually needs. The two enumerations agree as
 /// *sets* (see the crate test), never required to agree in order.
+///
+/// # Examples
+///
+/// ```
+/// use spotlab_range::COMBOS;
+///
+/// assert_eq!(COMBOS.len(), 169);
+/// assert_eq!(COMBOS[0], "AA");
+/// assert_eq!(COMBOS[1], "AKs");
+/// assert_eq!(COMBOS[13], "AKo");
+/// ```
 pub const COMBOS: [&str; 169] = [
     "AA", "AKs", "AQs", "AJs", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s", "A4s", "A3s", "A2s",
     "AKo", "KK", "KQs", "KJs", "KTs", "K9s", "K8s", "K7s", "K6s", "K5s", "K4s", "K3s", "K2s",
@@ -46,4 +75,12 @@ pub const COMBOS: [&str; 169] = [
 /// against config-side ranges) shares this single constant rather than each defining its own
 /// copy. Weights ultimately arrive as `f64` from a UI or a solver round-trip and are summed
 /// across a node's actions, so exact comparison would reject values like `0.1 + 0.2` spuriously.
+///
+/// # Examples
+///
+/// ```
+/// use spotlab_range::WEIGHT_TOLERANCE;
+///
+/// assert!(((0.1_f64 + 0.2) - 0.3).abs() < WEIGHT_TOLERANCE);
+/// ```
 pub const WEIGHT_TOLERANCE: f64 = 1e-6;

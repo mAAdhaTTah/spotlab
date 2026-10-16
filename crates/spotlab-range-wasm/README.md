@@ -16,4 +16,4 @@ is tested from `@spotlab/range`'s own test suite, which exercises the built
 
 ## License
 
-MIT — see `LICENSE` at the repository root.
+MIT — see `LICENSE`.
