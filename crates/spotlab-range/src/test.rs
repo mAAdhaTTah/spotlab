@@ -332,19 +332,20 @@ fn full_round_trips_through_display_and_parse() {
 }
 
 #[rstest]
-fn full_renders_every_combo_as_a_bare_token() {
+fn full_renders_every_family_as_one_bare_shorthand_token() {
     let rendered = Range::full().to_string();
     let tokens: Vec<&str> = rendered.split(',').collect();
 
-    assert_eq!(tokens.len(), 169, "169 canonical combos");
+    // `22+`, then a suited and an offsuit token for each of the 12 non-deuce high cards.
+    assert_eq!(tokens.len(), 1 + 12 * 2);
     assert!(
         tokens.iter().all(|token| !token.contains(':')),
         "a weight-1 entry renders bare"
     );
-    assert!(tokens.contains(&"AA"));
-    assert!(tokens.contains(&"AKs"));
-    assert!(tokens.contains(&"AKo"));
-    assert_eq!(RANKS.len(), 13);
+    assert!(tokens.contains(&"22+"));
+    assert!(tokens.contains(&"A2s+"));
+    // A one-combo family stays a plain combo token.
+    assert!(tokens.contains(&"32o"));
 }
 
 // `RANKS`' ascending order is part of the crate's public contract — index equals rank
@@ -537,9 +538,10 @@ fn combos_has_169_entries_round_tripping_to_1326_hands() {
 fn combos_agrees_with_full_as_a_set() {
     let combos: HashSet<&str> = COMBOS.iter().copied().collect();
     let full_combos: HashSet<String> = Range::full()
-        .to_string()
-        .split(',')
-        .map(|token| token.to_string())
+        .to_combo_weights()
+        .into_iter()
+        .filter(|(_, weight)| *weight > 0.0)
+        .map(|(combo, _)| combo)
         .collect();
 
     assert_eq!(combos.len(), 169);
@@ -572,4 +574,79 @@ fn to_combo_weights_equals_the_shared_weight_for_a_suit_symmetric_range() {
     let weights = range.to_combo_weights();
     assert_eq!(weights.get("AKs").copied(), Some(0.5));
     assert_eq!(weights.get("QQ").copied(), Some(1.0));
+}
+
+// Shorthand grammar: `+` extends a pair up to `AA` or a kicker up to just below the high card;
+// `-` spans an inclusive run within one family (pairs, or one high card at one suitedness),
+// written in either order. A trailing `:weight` applies to every combo the token covers.
+fn combos_of(range: &Range) -> Vec<String> {
+    let mut combos: Vec<String> = range
+        .to_combo_weights()
+        .into_iter()
+        .filter(|(_, weight)| *weight > 0.0)
+        .map(|(combo, _)| combo)
+        .collect();
+    combos.sort();
+    combos
+}
+
+fn sorted(combos: &[&str]) -> Vec<String> {
+    let mut combos: Vec<String> = combos.iter().map(|c| c.to_string()).collect();
+    combos.sort();
+    combos
+}
+
+#[rstest]
+#[case::pair_plus("TT+", &["AA", "KK", "QQ", "JJ", "TT"])]
+#[case::top_pair_plus("AA+", &["AA"])]
+#[case::suited_plus("A9s+", &["AKs", "AQs", "AJs", "ATs", "A9s"])]
+#[case::offsuit_plus("KTo+", &["KQo", "KJo", "KTo"])]
+#[case::top_kicker_plus("AKs+", &["AKs"])]
+#[case::suitless_plus("QJ+", &["QJs", "QJo"])]
+#[case::pair_dash("TT-77", &["TT", "99", "88", "77"])]
+#[case::pair_dash_reversed("77-TT", &["TT", "99", "88", "77"])]
+#[case::suited_dash("A5s-A2s", &["A5s", "A4s", "A3s", "A2s"])]
+#[case::offsuit_dash_reversed("K7o-K9o", &["K9o", "K8o", "K7o"])]
+#[case::suitless_dash("J9-J8", &["J9s", "J9o", "J8s", "J8o"])]
+#[case::single_step_dash("55-55", &["55"])]
+fn parse_expands_shorthand(#[case] input: &str, #[case] expected: &[&str]) {
+    assert_eq!(combos_of(&Range::parse(input).unwrap()), sorted(expected));
+}
+
+#[rstest]
+fn shorthand_weight_applies_to_every_combo() {
+    let range = Range::parse("22+:0.5").unwrap();
+    assert_eq!(range.hand_frequency("2c2d"), 0.5);
+    assert_eq!(range.hand_frequency("AhAs"), 0.5);
+}
+
+#[rstest]
+#[case::dash_across_families("TT-A2s")]
+#[case::dash_across_high_cards("A5s-K5s")]
+#[case::dash_across_suitedness("A5s-A2o")]
+#[case::dangling_dash("TT-")]
+#[case::dangling_plus_weight("TT+:")]
+fn parse_rejects_malformed_shorthand(#[case] input: &str) {
+    assert!(Range::parse(input).is_err());
+}
+
+#[rstest]
+#[case::pairs_to_top("AA,KK,QQ", "QQ+")]
+#[case::pairs_mid_run("TT,99,88,77", "TT-77")]
+#[case::suited_to_top("AKs,AQs,AJs", "AJs+")]
+#[case::offsuit_mid_run("K9o,K8o,K7o", "K9o-K7o")]
+#[case::two_step_run("A3s,A2s", "A3s-A2s")]
+#[case::single_top_combo_stays_bare("AA", "AA")]
+#[case::top_kicker_stays_bare("AKs", "AKs")]
+// Runs split on a weight change.
+#[case::split_on_weight("AA,KK,QQ:0.5,JJ:0.5", "KK+,QQ-JJ:0.5")]
+// A gap splits a run; the parts are emitted where their first member was.
+#[case::split_on_gap("AA,KK,TT,99", "KK+,TT-99")]
+// Suited and offsuit never merge into the suitless form.
+#[case::suited_and_offsuit_stay_separate("AKs,AQs,AKo,AQo", "AQs+,AQo+")]
+// A run is emitted at its first member's position.
+#[case::run_at_first_position("QQ,AKs,KK,AA", "QQ+,AKs")]
+#[case::shorthand_round_trips("22+,A2s+,KTo+:0.5", "22+,A2s+,KTo+:0.5")]
+fn render_compacts_runs_to_shorthand(#[case] input: &str, #[case] expected: &str) {
+    assert_eq!(Range::parse(input).unwrap().to_string(), expected);
 }

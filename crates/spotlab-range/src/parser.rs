@@ -4,7 +4,7 @@ use winnow::error::StrContext;
 use winnow::prelude::*;
 use winnow::token::take_while;
 
-use super::{Hand, RangeEntry, SUITS};
+use super::{Hand, RangeEntry, RANKS, SUITS};
 
 pub(super) fn rank(input: &mut &str) -> winnow::Result<char> {
     winnow::token::one_of([
@@ -81,16 +81,92 @@ pub(super) fn combo_token_to_hands(combo: &str) -> Vec<Hand> {
         .collect()
 }
 
-/// Parse one hand-keyed range entry: a suit-specific [`hand`] token or a [`combo`] token,
+/// A combo token's optional shorthand suffix.
+#[derive(Clone)]
+enum Shorthand {
+    /// `22+` / `A2s+`: up to `AA`, or up to the kicker just below the high card.
+    Plus,
+    /// `TT-77` / `A5s-A2s`: an inclusive run to this other end, in either order.
+    To(String),
+}
+
+/// A combo token split into its high rank, low rank (equal for a pair), and suitedness
+/// (`"s"`, `"o"`, or `""` for suitless), with ranks as indices into [`RANKS`].
+fn combo_parts(combo: &str) -> (usize, usize, &str) {
+    let rank_index = |c: char| RANKS.iter().position(|&r| r == c).expect("combo grammar");
+    let mut chars = combo.chars();
+    let high = rank_index(chars.next().expect("combo grammar"));
+    let low = rank_index(chars.next().expect("combo grammar"));
+    (high, low, &combo[2..])
+}
+
+/// Expand a combo token and its shorthand suffix into the combo tokens it covers (still
+/// possibly suitless), or `None` when the shorthand spans more than one family: a `-` must
+/// join two pairs, or two combos sharing a high card and suitedness.
+fn expand_shorthand(combo: &str, shorthand: Option<Shorthand>) -> Option<Vec<String>> {
+    let (high, low, suited) = combo_parts(combo);
+    let (from, to) = match shorthand {
+        None => return Some(vec![combo.to_string()]),
+        Some(Shorthand::Plus) if high == low => (low, RANKS.len() - 1),
+        Some(Shorthand::Plus) if high > low => (low, high - 1),
+        Some(Shorthand::Plus) => return None,
+        Some(Shorthand::To(other)) => {
+            let (other_high, other_low, other_suited) = combo_parts(&other);
+            let both_pairs = high == low && other_high == other_low;
+            let same_kicker_family = high != low
+                && other_high != other_low
+                && high == other_high
+                && suited == other_suited
+                && high > low.max(other_low);
+            if !both_pairs && !same_kicker_family {
+                return None;
+            }
+            (low.min(other_low), low.max(other_low))
+        }
+    };
+
+    Some(
+        (from..=to)
+            .rev()
+            .map(|rank| {
+                if high == low {
+                    format!("{0}{0}", RANKS[rank])
+                } else {
+                    format!("{}{}{suited}", RANKS[high], RANKS[rank])
+                }
+            })
+            .collect(),
+    )
+}
+
+/// A [`combo`] token with an optional shorthand suffix (`22+`, `A2s+`, `TT-77`, `A5s-A2s`),
+/// expanded into every concrete [`Hand`] it covers.
+fn combo_spec(input: &mut &str) -> winnow::Result<Vec<Hand>> {
+    (
+        combo,
+        opt(alt((
+            "+".value(Shorthand::Plus),
+            preceded("-", combo).map(Shorthand::To),
+        ))),
+    )
+        .verify_map(|(combo, shorthand)| expand_shorthand(&combo, shorthand))
+        .map(|combos| {
+            combos
+                .iter()
+                .flat_map(|combo| combo_token_to_hands(combo))
+                .collect()
+        })
+        .context(StrContext::Label("Combo"))
+        .parse_next(input)
+}
+
+/// Parse one hand-keyed range entry: a suit-specific [`hand`] token or a [`combo_spec`] token,
 /// with an optional `:frequency` suffix. A hand token yields a single hand key; a combo token
 /// expands to all of its concrete hands (`combo_token_to_hands`), each carrying the entry's
 /// shared weight/raw.
 pub(super) fn hand_range_entry(input: &mut &str) -> winnow::Result<Vec<(Hand, RangeEntry)>> {
     seq!(
-        alt((
-            hand.map(|h| vec![h]),
-            combo.map(|c| combo_token_to_hands(&c))
-        )),
+        alt((hand.map(|h| vec![h]), combo_spec,)),
         opt(preceded(":", frequency_text)),
     )
     .map(|(hands, frequency)| {

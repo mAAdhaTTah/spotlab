@@ -13,8 +13,15 @@
 //! let per_combo = range.to_combo_weights();
 //! assert_eq!(per_combo["AKs"], 1.0);
 //! assert_eq!(per_combo["72o"], 0.0);
+//!
+//! // Shorthand parses, and contiguous same-weight runs render back to it.
+//! let range = Range::parse("AA,KK,QQ, A5s-A2s:0.5").unwrap();
+//! assert_eq!(range.hand_frequency("3c3d"), 0.0);
+//! assert_eq!(range.hand_frequency("Ah4h"), 0.5);
+//! assert_eq!(range.to_string(), "QQ+,A5s-A2s:0.5");
 //! ```
 
+use std::collections::HashSet;
 use std::fmt;
 use std::ops::AddAssign;
 
@@ -618,18 +625,56 @@ impl AddAssign<&Range> for Range {
     }
 }
 
+/// Where a canonical combo sits for shorthand compaction: its family (`None` for the pairs, or
+/// one high card at one suitedness), its position within that family (the low rank's index), and the
+/// family's top position (`AA` for pairs, the kicker just below the high card otherwise).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ComboSlot {
+    family: Option<(usize, char)>,
+    rank: usize,
+    top: usize,
+}
+
+impl ComboSlot {
+    fn of(combo: &str) -> Self {
+        let rank_index = |c: char| RANKS.iter().position(|&r| r == c).expect("canonical combo");
+        let mut chars = combo.chars();
+        let high = rank_index(chars.next().expect("canonical combo"));
+        let low = rank_index(chars.next().expect("canonical combo"));
+        if high == low {
+            return Self {
+                family: None,
+                rank: low,
+                top: RANKS.len() - 1,
+            };
+        }
+        let suited = chars.next().expect("canonical non-pair combo");
+        Self {
+            family: Some((high, suited)),
+            rank: low,
+            top: high - 1,
+        }
+    }
+
+    fn at(self, rank: usize) -> Self {
+        Self { rank, ..self }
+    }
+
+    fn combo(self) -> String {
+        match self.family {
+            None => format!("{0}{0}", RANKS[self.rank]),
+            Some((high, suited)) => format!("{}{}{suited}", RANKS[high], RANKS[self.rank]),
+        }
+    }
+}
+
 impl fmt::Display for Range {
-    /// Render the range to a range string, collapsing combos on write and falling back to
-    /// per-hand tokens where a combo cannot be collapsed losslessly.
-    ///
-    /// Live hands are grouped by combo ([`Hand::to_combo`]) in first-seen order. A combo is
-    /// emitted as a single token *iff* all of its concrete hands are present
-    /// ([`Hand::from_combo`] count: 6 pair / 4 suited / 12 offsuit) and they share one
-    /// `weight`+`raw` — rendered bare when `raw == "1"`, else `COMBO:raw`, reproducing the
-    /// combo-only blobs byte-for-byte. Otherwise (divergent weights, or only some hands
-    /// present) each present hand is emitted as its own token (`AsKh` bare when `raw == "1"`,
-    /// else `AsKh:raw`), so the range string stays fully lossless. Tokens are joined with the
-    /// canonical comma separator.
+    /// Renders the canonical range string. A combo whose hands are all present at one weight
+    /// collapses to its combo token, and a contiguous run of such combos at one weight within a
+    /// family collapses further to shorthand: `X+` when the run reaches the family's top
+    /// (`QQ+`, `AJs+`), `HI-LO` otherwise (`TT-77`, `K9o-K7o`). Suited and offsuit runs stay
+    /// separate. Every token is emitted at its first member's position; anything else falls
+    /// back to per-hand tokens.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut by_combo: IndexMap<String, Vec<(&str, &RangeEntry)>> = IndexMap::new();
         for (hand, entry) in &self.entries {
@@ -639,22 +684,56 @@ impl fmt::Display for Range {
                 .push((hand.as_str(), entry));
         }
 
+        // The single entry every hand of a combo shares, for combos that collapse to a token.
+        let collapsed: IndexMap<ComboSlot, &RangeEntry> = by_combo
+            .iter()
+            .filter_map(|(combo, hands)| {
+                let (_, first_entry) = hands[0];
+                let full = hands.len() == Hand::from_combo(combo).len();
+                let uniform = hands.iter().all(|(_, entry)| {
+                    entry.weight == first_entry.weight && entry.raw == first_entry.raw
+                });
+                (full && uniform).then(|| (ComboSlot::of(combo), first_entry))
+            })
+            .collect();
+
+        let mut emitted: HashSet<ComboSlot> = HashSet::new();
         let mut out = String::new();
 
         for (combo, hands) in &by_combo {
-            let (_, first_entry) = hands[0];
-            let full = hands.len() == Hand::from_combo(combo).len();
-            let uniform = hands.iter().all(|(_, entry)| {
-                entry.weight == first_entry.weight && entry.raw == first_entry.raw
-            });
-
-            if full && uniform {
-                push_token(&mut out, combo, &first_entry.raw);
-            } else {
+            let slot = ComboSlot::of(combo);
+            let Some(&entry) = collapsed.get(&slot) else {
                 for (hand, entry) in hands {
                     push_token(&mut out, hand, &entry.raw);
                 }
+                continue;
+            };
+            if emitted.contains(&slot) {
+                continue;
             }
+
+            let joins_run = |rank: usize| {
+                let neighbor = slot.at(rank);
+                !emitted.contains(&neighbor) && collapsed.get(&neighbor) == Some(&entry)
+            };
+            let mut low = slot.rank;
+            while low > 0 && joins_run(low - 1) {
+                low -= 1;
+            }
+            let mut high = slot.rank;
+            while high < slot.top && joins_run(high + 1) {
+                high += 1;
+            }
+            emitted.extend((low..=high).map(|rank| slot.at(rank)));
+
+            let token = if low == high {
+                slot.combo()
+            } else if high == slot.top {
+                format!("{}+", slot.at(low).combo())
+            } else {
+                format!("{}-{}", slot.at(high).combo(), slot.at(low).combo())
+            };
+            push_token(&mut out, &token, &entry.raw);
         }
 
         f.write_str(&out)

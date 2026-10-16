@@ -74,7 +74,7 @@ describe("parseRange / formatRange", () => {
     await initRange();
   });
 
-  it.each(["AKs:0.5,QQ", "AA", "72o:0.25", ""])(
+  it.each(["AKs:0.5,QQ", "AA", "72o:0.25", "22+,A2s+:0.5,KTo-K8o", ""])(
     "round-trips %s",
     (rangeString) => {
       expect(formatRange(parseRange(rangeString))).toBe(rangeString);
