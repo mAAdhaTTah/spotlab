@@ -4,6 +4,13 @@ import { useRangePainting, type PaintTool } from "./use-range-painting";
 import { COMBO_INDEX, type EditorCell } from "./cells";
 import type { EditorActionSpec } from "./weights";
 
+/**
+ * A cell's stacked action bands, as a gradient across the band layer. For a
+ * capped cell that layer is already sized to the cell's `avail`, so the bands
+ * are laid out relative to the layer, not scaled by `avail` a second time.
+ * Whatever `order` leaves uncovered stays transparent rather than letting the
+ * last band's color run on to the edge.
+ */
 const bandBackground = (
   cell: EditorCell,
   actions: EditorActionSpec[],
@@ -12,13 +19,17 @@ const bandBackground = (
   const stops: string[] = [];
   let cursor = 0;
   order.forEach((k) => {
-    const fraction = ((cell.weights[k] || 0) / 100) * cell.avail;
+    const fraction = (cell.weights[k] || 0) / 100;
     if (fraction <= 0) return;
     const color = actions[k].color;
     stops.push(`${color} ${cursor * 100}%`);
     stops.push(`${color} ${(cursor + fraction) * 100}%`);
     cursor += fraction;
   });
+  // The epsilon keeps float noise in weights summing to 100 from adding a sliver of a tail.
+  if (stops.length > 0 && cursor < 1 - 1e-9) {
+    stops.push(`transparent ${cursor * 100}% 100%`);
+  }
   return cellFillGradient(stops);
 };
 
@@ -89,8 +100,8 @@ export const RangeMatrixEditor: FC<RangeMatrixEditorProps> = ({
         }
         return { background: bandBackground(cell, actions, order), cursor };
       }}
-      onMouseDown={onCellDown}
-      onMouseEnter={onCellEnter}
+      onPointerDown={onCellDown}
+      onPointerEnter={onCellEnter}
     />
   );
 };

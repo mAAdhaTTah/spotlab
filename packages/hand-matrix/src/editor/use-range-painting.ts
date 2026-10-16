@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { COMBO_INDEX, type EditorCell } from "./cells";
 
 export type PaintTool = "brush" | "eyedropper";
 
 /**
  * The brush/eyedropper state machine behind `RangeMatrixEditor`: drag-painting
- * (tracked across `pointerdown`/mouse-enter without a React re-render per
- * cell) and eyedropping a cell's weights back onto the brush. Fully
- * controlled — all state changes go out through the `on*Change` callbacks.
+ * and eyedropping a cell's weights back onto the brush. Fully controlled — all
+ * state changes go out through the `on*Change` callbacks.
+ *
+ * Wire `onCellDown` to a cell's pointer-down and `onCellEnter` to the pointer
+ * moving onto a cell (`HandMatrix`'s `onPointerDown`/`onPointerEnter` do both,
+ * for mouse and touch alike). A stroke ends on any window `pointerup` or
+ * `pointercancel`.
  */
 export function useRangePainting(opts: {
   cells: EditorCell[];
@@ -19,23 +23,34 @@ export function useRangePainting(opts: {
 }) {
   const { cells, brush, tool, onCellsChange, onBrushChange, onToolChange } =
     opts;
-  const paintingRef = useRef(false);
-
-  useEffect(() => {
-    const onUp = () => (paintingRef.current = false);
-    window.addEventListener("pointerup", onUp);
-    return () => window.removeEventListener("pointerup", onUp);
+  // Aborts the in-progress stroke's end listeners; non-null exactly while painting. The stroke
+  // attaches them itself when it starts, rather than relying on a mount effect having run by the
+  // first pointerdown (a production render doesn't guarantee that).
+  const strokeAbortControllerRef = useRef<AbortController | null>(null);
+  const endStroke = useCallback(() => {
+    strokeAbortControllerRef.current?.abort();
+    strokeAbortControllerRef.current = null;
   }, []);
+  useEffect(() => endStroke, [endStroke]);
+
+  // The latest cells including this stroke's own paints, so cells painted by moves that land
+  // before the consumer re-renders build on each other instead of on a stale `cells` prop.
+  const cellsRef = useRef(cells);
+  useLayoutEffect(() => {
+    cellsRef.current = cells;
+  }, [cells]);
 
   const paintCell = useCallback(
     (combo: string) => {
+      const current = cellsRef.current;
       const index = COMBO_INDEX.get(combo)!;
-      if (cells[index].avail <= 0) return;
-      const next = cells.slice();
-      next[index] = { avail: cells[index].avail, weights: [...brush] };
+      if (current[index].avail <= 0) return;
+      const next = current.slice();
+      next[index] = { avail: current[index].avail, weights: [...brush] };
+      cellsRef.current = next;
       onCellsChange(next);
     },
-    [cells, brush, onCellsChange],
+    [brush, onCellsChange],
   );
 
   const eyedrop = useCallback(
@@ -54,15 +69,24 @@ export function useRangePainting(opts: {
         eyedrop(combo);
         return;
       }
-      paintingRef.current = true;
+      endStroke();
+      const strokeAbortController = new AbortController();
+      strokeAbortControllerRef.current = strokeAbortController;
+      window.addEventListener("pointerup", endStroke, {
+        signal: strokeAbortController.signal,
+      });
+      window.addEventListener("pointercancel", endStroke, {
+        signal: strokeAbortController.signal,
+      });
       paintCell(combo);
     },
-    [tool, eyedrop, paintCell],
+    [tool, eyedrop, paintCell, endStroke],
   );
 
   const onCellEnter = useCallback(
     (combo: string) => {
-      if (paintingRef.current && tool === "brush") paintCell(combo);
+      if (strokeAbortControllerRef.current && tool === "brush")
+        paintCell(combo);
     },
     [tool, paintCell],
   );

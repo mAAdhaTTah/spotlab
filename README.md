@@ -51,7 +51,7 @@ pnpm build                                       # wasm + all npm packages
 pnpm test                                        # package unit tests
 pnpm --filter @spotlab/hand-matrix storybook     # component development
 pnpm --filter @spotlab/hand-matrix exec playwright install chromium
-pnpm test-storybook                              # story tests (needs Chromium)
+pnpm test-storybook                              # story tests (needs Chromium; production React, as Chromatic runs them)
 pnpm check                                       # prettier
 
 cargo test --workspace
