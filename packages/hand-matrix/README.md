@@ -31,7 +31,8 @@ Everything below is exported from the package root.
     pointer moves onto a new cell, found by hit-testing each `pointermove`
     (`elementFromPoint`), so it also fires during a touch drag, where
     enter events never reach the other cells. Passing `onPointerDown` sets
-    `touch-action: none` on the grid, so a drag doesn't scroll the page.
+    `touch-action: none` and `user-select: none` on the grid, so a drag
+    neither scrolls the page nor selects the combo text it crosses.
   - `className?: string` — merged onto the `.spotlab-hm-root` wrapper.
 - `RangeGrid` — a read-only display component. Accepts the expanded
   `HandFrequency[]` form or a range string directly (parsed via

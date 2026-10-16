@@ -28,9 +28,13 @@ export const WithComboStyle: Story = {
   },
 };
 
-export const ReadOnlyKeepsTouchScrolling: Story = {
+// A read-only grid keeps the browser's defaults: touch scrolls the page, and
+// combo text can be selected and copied.
+export const ReadOnlyKeepsScrollAndSelection: Story = {
   async play({ canvasElement }) {
-    expect(getComputedStyle(rootOf(canvasElement)).touchAction).toBe("auto");
+    const style = getComputedStyle(rootOf(canvasElement));
+    expect(style.touchAction).toBe("auto");
+    expect(style.userSelect).toBe("auto");
   },
 };
 
@@ -38,7 +42,9 @@ export const PointerDragAcrossCells: Story = {
   args: { onPointerDown: fn(), onPointerEnter: fn() },
   async play({ canvasElement, args }) {
     const root = rootOf(canvasElement);
+    // A drag neither scrolls the page nor selects the combo text it crosses.
     expect(getComputedStyle(root).touchAction).toBe("none");
+    expect(getComputedStyle(root).userSelect).toBe("none");
 
     for (const pointerType of ["touch", "mouse"] as const) {
       mocked(args.onPointerDown!).mockClear();

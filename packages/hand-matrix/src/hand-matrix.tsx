@@ -34,7 +34,7 @@ type GridPointerHandlers = {
    * A pointer (mouse, pen or touch) went down on `combo`'s cell. The grid
    * first releases the implicit pointer capture a touch takes on the element
    * it starts on, so later moves can resolve to other cells. Passing this
-   * also gives the grid root `touch-action: none`.
+   * also makes the grid root a drag surface (see `dragSurfaceStyle`).
    */
   onPointerDown?: CellPointerHandler;
   /**
@@ -107,11 +107,19 @@ const Row: FC<{ row: string[] } & CellProps> = ({ row, ...cellProps }) => (
   </div>
 );
 
+// A drag across the grid should neither scroll the page (`touch-action`), select the combo
+// text it crosses (`user-select`, prefixed for Safari), nor open iOS's long-press callout.
+const dragSurfaceStyle: CSSProperties = {
+  touchAction: "none",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
+};
+
 /**
  * The bare 13x13 grid. Each cell carries a `data-combo` attribute. Passing
- * `onPointerDown` marks the grid as a drag surface: its root gets
- * `touch-action: none`, so a touch drag reaches the handlers instead of
- * scrolling the page.
+ * `onPointerDown` marks the grid as a drag surface (`dragSurfaceStyle`): a
+ * drag reaches the handlers instead of scrolling the page or selecting text.
  */
 export const HandMatrix: FC<
   { className?: string } & ComboStyleProp & GridPointerHandlers
@@ -133,7 +141,7 @@ export const HandMatrix: FC<
   return (
     <div
       className={["spotlab-hm-root", className].filter(Boolean).join(" ")}
-      style={onPointerDown ? { touchAction: "none" } : undefined}
+      style={onPointerDown ? dragSurfaceStyle : undefined}
       onPointerDown={
         onPointerEnter &&
         ((event) => {
