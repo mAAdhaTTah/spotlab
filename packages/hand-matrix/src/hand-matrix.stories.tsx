@@ -7,8 +7,6 @@ const meta: Meta<typeof HandMatrix> = {
   component: HandMatrix,
   args: {
     onClick: fn(),
-    onMouseDown: fn(),
-    onMouseEnter: fn(),
   },
 };
 

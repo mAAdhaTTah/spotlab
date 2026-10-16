@@ -27,8 +27,6 @@ export type CellPointerHandler = (
 
 type ComboHandlers = {
   onClick?: (combo: string) => void;
-  onMouseDown?: (combo: string) => void;
-  onMouseEnter?: (combo: string) => void;
   comboStyle?: (combo: string) => CSSProperties;
 };
 
@@ -84,8 +82,6 @@ type CellProps = ComboHandlers & { onPointerDown?: CellPointerHandler };
 const Combo: FC<{ combo: string } & CellProps> = ({
   combo,
   onClick,
-  onMouseDown,
-  onMouseEnter,
   onPointerDown,
   comboStyle,
 }) => {
@@ -95,8 +91,6 @@ const Combo: FC<{ combo: string } & CellProps> = ({
       data-combo={combo}
       style={comboStyle?.(combo)}
       onClick={() => onClick?.(combo)}
-      onMouseDown={() => onMouseDown?.(combo)}
-      onMouseEnter={() => onMouseEnter?.(combo)}
       onPointerDown={
         onPointerDown &&
         ((event) => {

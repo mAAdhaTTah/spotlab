@@ -24,15 +24,14 @@ Everything below is exported from the package root.
   is entirely the caller's job via `comboStyle`, keyed by combo string (e.g.
   `"AKs"`). Each cell carries a `data-combo` attribute. Props:
   - `comboStyle?: (combo) => CSSProperties` — per-cell style.
-  - `onClick?`, `onMouseDown?`, `onMouseEnter?: (combo) => void` — plain
-    per-cell mouse handlers.
+  - `onClick?: (combo) => void` — a cell was clicked or tapped.
   - `onPointerDown?`, `onPointerEnter?: CellPointerHandler` — the
     `(combo, event)` handlers to use for dragging across cells, with a mouse
     or a finger. `onPointerDown` releases the implicit pointer capture a
     touch takes on its first cell. `onPointerEnter` fires once each time the
     pointer moves onto a new cell, found by hit-testing each `pointermove`
     (`elementFromPoint`), so it also fires during a touch drag, where
-    `mouseenter` never does. Passing `onPointerDown` sets
+    enter events never reach the other cells. Passing `onPointerDown` sets
     `touch-action: none` on the grid, so a drag doesn't scroll the page.
   - `className?: string` — merged onto the `.spotlab-hm-root` wrapper.
 - `RangeGrid` — a read-only display component. Accepts the expanded
