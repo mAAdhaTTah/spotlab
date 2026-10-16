@@ -16,56 +16,36 @@ concurrency:
 jobs:
   chromatic:
     runs-on: ubuntu-latest
-    env:
-      CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
 
     steps:
-      - name: Check for Chromatic token
-        id: token
-        run: |
-          if [ -n "$CHROMATIC_PROJECT_TOKEN" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "CHROMATIC_PROJECT_TOKEN is not available; skipping Chromatic."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout code
-        if: steps.token.outputs.available == 'true'
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Rust toolchain
-        if: steps.token.outputs.available == 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Install wasm-pack
-        if: steps.token.outputs.available == 'true'
         uses: taiki-e/install-action@wasm-pack
 
       - name: Setup Node.js
-        if: steps.token.outputs.available == 'true'
         uses: actions/setup-node@v7
         with:
           node-version-file: "package.json"
 
       - name: Install pnpm
-        if: steps.token.outputs.available == 'true'
         uses: pnpm/action-setup@v6
         with:
           cache: true
 
       - name: Install dependencies
-        if: steps.token.outputs.available == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build @spotlab/range
-        if: steps.token.outputs.available == 'true'
         run: pnpm --filter "@spotlab/range" build
 
       - name: Publish to Chromatic
-        if: steps.token.outputs.available == 'true'
         uses: chromaui/action@v1
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
