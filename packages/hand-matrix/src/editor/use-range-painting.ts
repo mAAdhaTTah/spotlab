@@ -23,23 +23,22 @@ export function useRangePainting(opts: {
 }) {
   const { cells, brush, tool, onCellsChange, onBrushChange, onToolChange } =
     opts;
-  const paintingRef = useRef(false);
+  // The in-progress stroke's end listeners; non-null exactly while painting. The stroke attaches
+  // them itself when it starts, rather than relying on a mount effect having run by the first
+  // pointerdown (a production render doesn't guarantee that).
+  const strokeRef = useRef<AbortController | null>(null);
+  const endStroke = useCallback(() => {
+    strokeRef.current?.abort();
+    strokeRef.current = null;
+  }, []);
+  useEffect(() => endStroke, [endStroke]);
+
   // The latest cells including this stroke's own paints, so cells painted by moves that land
   // before the consumer re-renders build on each other instead of on a stale `cells` prop.
   const cellsRef = useRef(cells);
   useLayoutEffect(() => {
     cellsRef.current = cells;
   }, [cells]);
-
-  useEffect(() => {
-    const onUp = () => (paintingRef.current = false);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-  }, []);
 
   const paintCell = useCallback(
     (combo: string) => {
@@ -70,15 +69,23 @@ export function useRangePainting(opts: {
         eyedrop(combo);
         return;
       }
-      paintingRef.current = true;
+      endStroke();
+      const stroke = new AbortController();
+      strokeRef.current = stroke;
+      window.addEventListener("pointerup", endStroke, {
+        signal: stroke.signal,
+      });
+      window.addEventListener("pointercancel", endStroke, {
+        signal: stroke.signal,
+      });
       paintCell(combo);
     },
-    [tool, eyedrop, paintCell],
+    [tool, eyedrop, paintCell, endStroke],
   );
 
   const onCellEnter = useCallback(
     (combo: string) => {
-      if (paintingRef.current && tool === "brush") paintCell(combo);
+      if (strokeRef.current && tool === "brush") paintCell(combo);
     },
     [tool, paintCell],
   );
