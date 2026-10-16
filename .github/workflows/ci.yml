@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Run cargofmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Run cargo test
+        run: cargo test --workspace
+
+      - name: Check the bundled LICENSE copies match the root LICENSE
+        run: |
+          cmp LICENSE crates/spotlab-range/LICENSE
+          cmp LICENSE packages/range/LICENSE
+          cmp LICENSE packages/hand-matrix/LICENSE
+
+      - name: Check spotlab-range builds for wasm32 with default (non-specta) features
+        run: cargo check -p spotlab-range --target wasm32-unknown-unknown --no-default-features --features serde
+
+      - name: Check spotlab-range builds with every feature (guards the specta feature from bit-rotting)
+        run: cargo check -p spotlab-range --all-features
+
+      - name: Regenerate packages/range/src/generated/constants.ts and fail on drift
+        run: |
+          cargo xtask codegen
+          git diff --exit-code packages/range/src/generated/constants.ts
+
+  # Builds its own wasm rather than consuming an artifact from rust-checks: the two jobs stay
+  # independent and run in parallel, and a package failure is not masked by a crate failure.
+  package-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@wasm-pack
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: "package.json"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter "@spotlab/hand-matrix" exec playwright install-deps chromium
+          pnpm --filter "@spotlab/hand-matrix" exec playwright install chromium
+
+      - name: Check formatting
+        run: pnpm check
+
+      - name: Build npm packages
+        run: pnpm build
+
+      - name: Test npm packages
+        run: pnpm test
+
+      - name: Build @spotlab/hand-matrix Storybook
+        run: pnpm --filter "@spotlab/hand-matrix" build-storybook
+
+      - name: Guard that the package Storybook ships no Tailwind
+        working-directory: packages/hand-matrix/storybook-static/assets
+        run: |
+          ls *.css
+          if grep -lE -- '--tw-|tailwindcss|box-sizing' *.css; then
+            echo "Tailwind or app CSS leaked into the package Storybook" >&2
+            exit 1
+          fi
+
+      - name: Test @spotlab/hand-matrix stories
+        run: pnpm --filter "@spotlab/hand-matrix" test-storybook

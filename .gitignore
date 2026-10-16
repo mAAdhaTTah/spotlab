@@ -1,1 +1,7 @@
-/target
+node_modules
+target
+dist
+storybook-static
+*.log
+.DS_Store
+.pnpm-store

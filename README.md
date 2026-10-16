@@ -37,6 +37,27 @@ cargo test --workspace
 cargo check --workspace --target wasm32-unknown-unknown --no-default-features
 ```
 
+## Development
+
+Prerequisites:
+
+- Rust, via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the version and the wasm target.
+- [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), to build the WebAssembly behind `@spotlab/range`.
+- Node.js (see `devEngines` in `package.json`) and pnpm, via [corepack](https://nodejs.org/api/corepack.html): `corepack enable`.
+
+```
+pnpm install
+pnpm build                                       # wasm + all npm packages
+pnpm test                                        # package unit tests
+pnpm --filter @spotlab/hand-matrix storybook     # component development
+pnpm --filter @spotlab/hand-matrix exec playwright install chromium
+pnpm test-storybook                              # story tests (needs Chromium)
+pnpm check                                       # prettier
+
+cargo test --workspace
+cargo xtask codegen                              # regenerate packages/range/src/generated/constants.ts
+```
+
 ## Status
 
 Early. `spotlab-range` is in use and tested, but nothing is published to
