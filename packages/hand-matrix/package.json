@@ -53,7 +53,7 @@
     "test": "vitest run --project unit",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build",
-    "test-storybook": "vitest run --project storybook"
+    "test-storybook": "NODE_ENV=production vitest run --project storybook"
   },
   "devDependencies": {
     "@spotlab/range": "workspace:*",
