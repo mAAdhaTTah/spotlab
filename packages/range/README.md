@@ -10,7 +10,12 @@ import { initRange, parseRange, formatRange } from "@spotlab/range";
 await initRange(); // once, at startup; idempotent, returns the same promise
 const hands = parseRange("AKs:0.5,QQ"); // synchronous from here on
 formatRange(hands); // "AKs:0.5,QQ"
+formatRange(parseRange("AA,KK,QQ,A5s-A2s:0.5")); // "QQ+,A5s-A2s:0.5"
 ```
+
+The grammar (hand tokens, combos, suitless combos, `22+` / `TT-77` shorthand)
+and the canonical rendering rules are documented in the
+[`spotlab-range` README](../../crates/spotlab-range#grammar).
 
 ## Why an explicit `initRange()`
 
