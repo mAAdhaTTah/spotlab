@@ -369,6 +369,7 @@ dependencies = [
 name = "spotlab-range-wasm"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "serde",
  "serde-wasm-bindgen",
  "spotlab-range",
