@@ -65,15 +65,9 @@ export const PointerDownReleasesImplicitCapture: Story = {
     const release = spyOn(label, "releasePointerCapture").mockImplementation(
       () => {},
     );
-    try {
-      firePointer("pointerdown", label, label, "touch");
-      expect(hasCapture).toHaveBeenCalledWith(2);
-      expect(release).toHaveBeenCalledWith(2);
-      expect(args.onPointerDown).toHaveBeenCalledWith("AA", expect.anything());
-    } finally {
-      firePointer("pointerup", label, label, "touch");
-      hasCapture.mockRestore();
-      release.mockRestore();
-    }
+    firePointer("pointerdown", label, label, "touch");
+    expect(hasCapture).toHaveBeenCalledWith(2);
+    expect(release).toHaveBeenCalledWith(2);
+    expect(args.onPointerDown).toHaveBeenCalledWith("AA", expect.anything());
   },
 };
