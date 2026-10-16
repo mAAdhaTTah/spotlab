@@ -1,8 +1,7 @@
 name: Release
 
 # Pushes to main either open/refresh the release PR (when changesets are pending) or, once that
-# PR has merged, publish what it versioned. Publishing is off until the repository variable
-# RELEASE_PUBLISH_ENABLED is set to "true"; see RELEASING.md.
+# PR has merged, publish what it versioned. See RELEASING.md.
 on:
   push:
     branches: [main]
@@ -22,82 +21,42 @@ jobs:
       pull-requests: write # open and update the release PR
       id-token: write # npm and crates.io trusted publishing (OIDC)
 
-    env:
-      PUBLISH_ENABLED: ${{ vars.RELEASE_PUBLISH_ENABLED == 'true' }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Check for pending changesets
-        id: plan
-        run: |
-          pending=false
-          if compgen -G ".sampo/changesets/*.md" > /dev/null; then
-            pending=true
-          fi
-          echo "pending=$pending" >> "$GITHUB_OUTPUT"
-          # With no pending changesets sampo's auto mode publishes any unpublished version, so a
-          # push that has nothing to open a release PR for is skipped entirely until publishing
-          # is switched on.
-          if [ "$pending" = true ] || [ "$PUBLISH_ENABLED" = true ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No pending changesets and publishing is disabled; nothing to do."
-          fi
-          if [ "$pending" != true ] && [ "$PUBLISH_ENABLED" = true ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Setup Rust toolchain
-        if: steps.plan.outputs.run == 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Install wasm-pack
-        if: steps.plan.outputs.publish == 'true'
         uses: taiki-e/install-action@wasm-pack
 
       - name: Setup Node.js
-        if: steps.plan.outputs.run == 'true'
         uses: actions/setup-node@v7
         with:
           node-version-file: "package.json"
 
       - name: Install pnpm
-        if: steps.plan.outputs.run == 'true'
         uses: pnpm/action-setup@v6
         with:
           cache: true
 
       - name: Install dependencies
-        if: steps.plan.outputs.publish == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build npm packages
-        if: steps.plan.outputs.publish == 'true'
         run: pnpm build
 
       - name: Authenticate with crates.io
-        if: steps.plan.outputs.publish == 'true'
         id: crates-io-auth
         uses: rust-lang/crates-io-auth-action@v1
 
       - name: Open the release PR or publish
-        if: steps.plan.outputs.run == 'true'
         uses: bruits/sampo/crates/sampo-github-action@cargo-sampo-github-action-v0.20.0
         with:
           command: auto
-          # Safety net behind the gate above: when publishing is disabled the action's publish path
-          # (reached if a pending changeset yields an empty plan, e.g. it names only ignored
-          # packages) is a dry run. This relies on sampo-github-action's prepare_release_pr
-          # ignoring dry-run while post_merge_publish honours it (checked at v0.20.0); re-check
-          # when bumping the action pin.
-          dry-run: ${{ steps.plan.outputs.publish != 'true' }}
           create-github-release: true
           cargo-token: ${{ steps.crates-io-auth.outputs.token }}
           npm-args: --provenance --no-git-checks
