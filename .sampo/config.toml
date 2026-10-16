@@ -8,7 +8,8 @@ repository = "mAAdhaTTah/spotlab"
 
 [changelog]
 show_commit_hash = true
-show_acknowledgments = true
+# Off until the owner can be excluded from the thanks (bruits/sampo#340, spotlab#13).
+show_acknowledgments = false
 
 [packages]
 ignore_unpublished = true
