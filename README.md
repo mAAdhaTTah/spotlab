@@ -43,7 +43,7 @@ Prerequisites:
 
 - Rust, via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the version and the wasm target.
 - [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), to build the WebAssembly behind `@spotlab/range`.
-- Node.js (see `devEngines` in `package.json`) and pnpm, via [corepack](https://nodejs.org/api/corepack.html): `corepack enable`.
+- Node.js and pnpm at the versions pinned in `devEngines` in `package.json`. Any pnpm v11 works to start with: it downloads and switches to the pinned version itself.
 
 ```
 pnpm install
