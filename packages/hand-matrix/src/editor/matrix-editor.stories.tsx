@@ -19,6 +19,7 @@ import {
   mockEditorOrder,
   mockPaintBrush,
   mockStroke,
+  mockVariedEditorCells,
   rootOf,
   weightsOf,
 } from "../fixtures";
@@ -191,5 +192,5 @@ export const Interactive: Story = {
       </div>
     );
   },
-  args: { brush: mockPaintBrush },
+  args: { cells: mockVariedEditorCells, brush: mockPaintBrush },
 };

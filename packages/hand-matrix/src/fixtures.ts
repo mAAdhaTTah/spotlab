@@ -23,6 +23,25 @@ export const mockEditorCells: EditorCell[] = mockSeededCells.map((cell, i) =>
   i === mockCappedIndex ? { ...cell, avail: 0.5 } : cell,
 );
 
+export const mockDeadCombo = "72o";
+
+/**
+ * A grid for trying the editor by hand: call weights spread across 0–100% in
+ * 5% steps so neighboring cells differ, plus the capped `mockCappedCombo` and
+ * a dead `mockDeadCombo`. Weights are `[fold, call]`, matching
+ * `mockEditorActions`, with fold as the remainder.
+ */
+export const mockVariedEditorCells: EditorCell[] = COMBOS.map((combo, i) => {
+  if (combo === mockDeadCombo) return { avail: 0, weights: [100, 0] };
+  const row = Math.floor(i / 13);
+  const col = i % 13;
+  const call = ((row * 5 + col * 3) % 21) * 5;
+  return {
+    avail: combo === mockCappedCombo ? 0.5 : 1,
+    weights: [100 - call, call],
+  };
+});
+
 /** `combo`'s weights in `cells`. */
 export const weightsOf = (cells: EditorCell[], combo: string) =>
   cells[COMBOS.indexOf(combo)].weights;
