@@ -1,0 +1,16 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard",
+  "configMigration": true,
+  "prHourlyLimit": 0,
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "groupName": "specta packages",
+      "matchDepNames": ["specta", "specta-typescript"],
+      "matchManagers": ["cargo"]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+.pnpm-store
+target
+packages/*/dist
+packages/range/src/wasm
+packages/range/src/generated
+packages/*/storybook-static

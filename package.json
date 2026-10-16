@@ -1,0 +1,27 @@
+{
+  "name": "spotlab",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test-storybook": "pnpm -r test-storybook",
+    "check": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.21.0"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.28.5",
+      "onFail": "download"
+    }
+  }
+}
