@@ -3,6 +3,7 @@ export {
   cellFillGradient,
   CELL_FILL_DIRECTION,
 } from "./hand-matrix";
+export type { CellPointerHandler } from "./hand-matrix";
 export { RangeGrid } from "./range-grid";
 
 export { RangeMatrixEditor } from "./editor/matrix-editor";
