@@ -5,3 +5,5 @@ storybook-static
 *.log
 .DS_Store
 .pnpm-store
+chromatic-diagnostics.json
+.chromatic
