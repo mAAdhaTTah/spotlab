@@ -25,8 +25,7 @@ export type CellPointerHandler = (
   event: ReactPointerEvent<HTMLDivElement>,
 ) => void;
 
-type ComboHandlers = {
-  onClick?: (combo: string) => void;
+type ComboStyleProp = {
   comboStyle?: (combo: string) => CSSProperties;
 };
 
@@ -77,11 +76,10 @@ const comboAtPoint = (
   return cell.getAttribute("data-combo");
 };
 
-type CellProps = ComboHandlers & { onPointerDown?: CellPointerHandler };
+type CellProps = ComboStyleProp & { onPointerDown?: CellPointerHandler };
 
 const Combo: FC<{ combo: string } & CellProps> = ({
   combo,
-  onClick,
   onPointerDown,
   comboStyle,
 }) => {
@@ -90,7 +88,6 @@ const Combo: FC<{ combo: string } & CellProps> = ({
       className="spotlab-hm-cell"
       data-combo={combo}
       style={comboStyle?.(combo)}
-      onClick={() => onClick?.(combo)}
       onPointerDown={
         onPointerDown &&
         ((event) => {
@@ -106,10 +103,10 @@ const Combo: FC<{ combo: string } & CellProps> = ({
   );
 };
 
-const Row: FC<{ row: string[] } & CellProps> = ({ row, ...handlers }) => (
+const Row: FC<{ row: string[] } & CellProps> = ({ row, ...cellProps }) => (
   <div className="spotlab-hm-row">
     {row.map((combo, j) => (
-      <Combo key={j} combo={combo} {...handlers} />
+      <Combo key={j} combo={combo} {...cellProps} />
     ))}
   </div>
 );
@@ -121,8 +118,8 @@ const Row: FC<{ row: string[] } & CellProps> = ({ row, ...handlers }) => (
  * scrolling the page.
  */
 export const HandMatrix: FC<
-  { className?: string } & ComboHandlers & GridPointerHandlers
-> = ({ className, onPointerDown, onPointerEnter, ...handlers }) => {
+  { className?: string } & ComboStyleProp & GridPointerHandlers
+> = ({ className, onPointerDown, onPointerEnter, ...cellProps }) => {
   // The cell the pointer was last resolved to, so `onPointerEnter` fires once per cell change.
   const lastComboRef = useRef<string | null>(null);
 
@@ -157,7 +154,7 @@ export const HandMatrix: FC<
       onPointerLeave={onPointerEnter && (() => (lastComboRef.current = null))}
     >
       {chunk(COMBOS, 13).map((row, i) => (
-        <Row key={i} row={row} onPointerDown={onPointerDown} {...handlers} />
+        <Row key={i} row={row} onPointerDown={onPointerDown} {...cellProps} />
       ))}
     </div>
   );

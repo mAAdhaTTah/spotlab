@@ -24,7 +24,6 @@ Everything below is exported from the package root.
   is entirely the caller's job via `comboStyle`, keyed by combo string (e.g.
   `"AKs"`). Each cell carries a `data-combo` attribute. Props:
   - `comboStyle?: (combo) => CSSProperties` — per-cell style.
-  - `onClick?: (combo) => void` — a cell was clicked or tapped.
   - `onPointerDown?`, `onPointerEnter?: CellPointerHandler` — the
     `(combo, event)` handlers to use for dragging across cells, with a mouse
     or a finger. `onPointerDown` releases the implicit pointer capture a

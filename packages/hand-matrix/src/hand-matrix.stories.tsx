@@ -1,13 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, mocked, spyOn, userEvent } from "storybook/test";
+import { expect, fn, mocked, spyOn } from "storybook/test";
 import { HandMatrix } from "./hand-matrix";
 import { dragAcross, firePointer, labelFor } from "./fixtures";
 
 const meta: Meta<typeof HandMatrix> = {
   component: HandMatrix,
-  args: {
-    onClick: fn(),
-  },
 };
 
 export default meta;
@@ -34,16 +31,6 @@ export const WithComboStyle: Story = {
   },
   async play({ canvas }) {
     expect(await canvas.findByText("AA")).toBeInTheDocument();
-  },
-};
-
-export const ClickCombo: Story = {
-  async play({ canvas, args }) {
-    const aaCell = await canvas.findByText("AA", {
-      selector: "[data-combo]",
-    });
-    await userEvent.click(aaCell);
-    expect(args.onClick).toHaveBeenCalledWith("AA");
   },
 };
 
