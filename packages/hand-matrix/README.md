@@ -95,13 +95,16 @@ goes in as props and changes come out through `on*Change` callbacks.
   produces).
 - `cellsToComboWeights(cells, actionIndex): Map<string, number>` — collapse
   one action back to absolute per-combo weights, ready to save as a range.
-- `cellsToRanges(original, seed, cells): HandFrequency[][]` — turn the
-  edited grid back into one hand-keyed range per action. `original` holds
-  each action's range (or `null`) in editor action order, `seed` the cells
-  the editor opened with, and `cells` the cells after editing. Combos whose
-  cell still matches its seed keep each action's original hands verbatim;
-  changed combos, and every combo of a `null` action, are rebuilt from the
-  cells.
+- `cellsToRanges(original, seed, cells, avail?): HandFrequency[][]` — turn
+  the edited grid back into one hand-keyed range per action. `original`
+  holds each action's range (or `null`) in editor action order, `seed` the
+  cells the editor opened with, and `cells` the cells after editing.
+  `avail` is the parent range per hand (`null` for unconstrained); leave it
+  out when the parent gives every hand of a combo the same weight. Combos
+  whose cell still matches its seed keep each action's original hands
+  verbatim, and a `null` action takes what's left of each hand there.
+  Changed combos are rebuilt from the cells. Either way, each hand's
+  actions sum to its parent weight.
 - `comboWeightsToCells(cells, actionWeights, passive): EditorCell[]` — the
   inverse: re-derive the cells' conditional weights from absolute
   per-action ranges, keeping each cell's `avail`.

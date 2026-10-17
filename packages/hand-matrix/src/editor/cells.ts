@@ -1,7 +1,8 @@
 import {
   COMBOS,
   comboOf,
-  expandComboWeights,
+  handsOfCombo,
+  type Hand,
   type HandFrequency,
 } from "@spotlab/range";
 import { sumActive } from "./weights";
@@ -132,14 +133,20 @@ const cellChanged = (seed: EditorCell, cell: EditorCell): boolean =>
  * Turn an edited grid back into one hand-keyed range per action, keeping each
  * action's original hands wherever the editor didn't touch them. `original`
  * holds each action's range in editor action order, `seed` the cells the
- * editor opened with, and `cells` the cells after editing.
+ * editor opened with, and `cells` the cells after editing. `avail` is the
+ * parent range per hand, as passed (collapsed) to `seedCells`: `null` means
+ * unconstrained, and leaving it out takes each hand's weight from its cell's
+ * `avail`, which is exact whenever the parent gives every hand of a combo the
+ * same weight.
  *
  * A combo whose cell still equals its seed cell (same `avail`, same weights)
  * keeps every action's original hands verbatim, so input the whole-percent grid
  * can't represent — a single suit (`AhKh:0.7`) or a fractional weight
- * (`QQ:0.333`) — survives a save. A changed combo is rebuilt from the cells as
- * `cellsToComboWeights` does. An action whose original is `null` (e.g. an
- * implicit fold) is always rebuilt from the cells in full.
+ * (`QQ:0.333`) — survives a save. An action whose original is `null` (e.g. an
+ * implicit fold) takes what's left of each hand there: its parent weight minus
+ * the preserved originals, never below 0, split across `null` actions by their
+ * cell weights. A changed combo is rebuilt from its cell for every action, each
+ * hand getting the action's share of its own parent weight.
  *
  * Each rebuilt combo takes its first original hand's place, and combos the
  * original didn't have follow in matrix order, so an unedited range formats
@@ -149,18 +156,63 @@ export function cellsToRanges(
   original: (HandFrequency[] | null)[],
   seed: EditorCell[],
   cells: EditorCell[],
+  avail?: HandFrequency[] | null,
 ): HandFrequency[][] {
+  const parent =
+    avail && new Map(avail.map(({ hand, frequency }) => [hand, frequency]));
+  const availOf = (hand: Hand, cell: EditorCell) => {
+    if (avail === undefined) return cell.avail;
+    return parent ? (parent.get(hand) ?? 0) : 1;
+  };
+  const originals = original.map(
+    (hands) =>
+      hands && new Map(hands.map(({ hand, frequency }) => [hand, frequency])),
+  );
+  const preserved = (hand: Hand) =>
+    originals.reduce((sum, hands) => sum + (hands?.get(hand) ?? 0), 0);
+  const nullActions = original.flatMap((hands, k) => (hands ? [] : [k]));
+
+  const handsWith = (
+    combo: string,
+    frequencyOf: (hand: Hand) => number,
+  ): HandFrequency[] =>
+    handsOfCombo(combo).flatMap((hand) => {
+      const frequency = Number(frequencyOf(hand).toFixed(FREQUENCY_DIGITS));
+      return frequency > 0 ? [{ hand, frequency }] : [];
+    });
+
+  const rebuild = (combo: string, k: number): HandFrequency[] => {
+    const cell = cells[COMBO_INDEX.get(combo)!];
+    const total = cell.weights.reduce((sum, value) => sum + value, 0);
+    if (cell.avail <= 0 || !total) return [];
+    return handsWith(
+      combo,
+      (hand) => (cell.weights[k] / total) * availOf(hand, cell),
+    );
+  };
+
+  const remainder = (combo: string, k: number): HandFrequency[] => {
+    const cell = cells[COMBO_INDEX.get(combo)!];
+    const nullTotal = nullActions.reduce((sum, j) => sum + cell.weights[j], 0);
+    const share = nullTotal
+      ? cell.weights[k] / nullTotal
+      : 1 / nullActions.length;
+    return handsWith(
+      combo,
+      (hand) => Math.max(0, availOf(hand, cell) - preserved(hand)) * share,
+    );
+  };
+
   const changed = new Set(
     COMBOS.filter((_, i) => cellChanged(seed[i], cells[i])),
   );
   return original.map((hands, k) => {
-    const rebuilt = cellsToComboWeights(cells, k);
-    if (hands === null) return expandComboWeights(rebuilt);
+    if (hands === null) {
+      return COMBOS.flatMap((combo) =>
+        changed.has(combo) ? rebuild(combo, k) : remainder(combo, k),
+      );
+    }
 
-    const expand = (combo: string) => {
-      const weight = rebuilt.get(combo);
-      return weight ? expandComboWeights(new Map([[combo, weight]])) : [];
-    };
     const out: HandFrequency[] = [];
     const placed = new Set<string>();
     for (const hand of hands) {
@@ -169,11 +221,11 @@ export function cellsToRanges(
         out.push(hand);
       } else if (!placed.has(combo)) {
         placed.add(combo);
-        out.push(...expand(combo));
+        out.push(...rebuild(combo, k));
       }
     }
     for (const combo of changed) {
-      if (!placed.has(combo)) out.push(...expand(combo));
+      if (!placed.has(combo)) out.push(...rebuild(combo, k));
     }
     return out;
   });
