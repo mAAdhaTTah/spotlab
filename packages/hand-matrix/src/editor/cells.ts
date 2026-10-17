@@ -1,4 +1,9 @@
-import { COMBOS } from "@spotlab/range";
+import {
+  COMBOS,
+  comboOf,
+  expandComboWeights,
+  type HandFrequency,
+} from "@spotlab/range";
 import { sumActive } from "./weights";
 
 export const COMBO_INDEX = new Map(
@@ -11,6 +16,17 @@ export const COMBO_INDEX = new Map(
  * share of that cap, summing to 100 across the node's actions.
  */
 export type EditorCell = { avail: number; weights: number[] };
+
+/** A copy of `cells` with `combo`'s cell replaced by `cell`. */
+export const withCell = (
+  cells: EditorCell[],
+  combo: string,
+  cell: EditorCell,
+): EditorCell[] => {
+  const next = cells.slice();
+  next[COMBO_INDEX.get(combo)!] = cell;
+  return next;
+};
 
 const rescaleOverflow = (weights: number[], passive: number): number[] => {
   const next = weights.slice();
@@ -104,5 +120,61 @@ export function comboWeightsToCells(
       weights[ai] = Math.round((frequency / cell.avail) * 100);
     });
     return { avail: cell.avail, weights: rescaleOverflow(weights, passive) };
+  });
+}
+
+const cellChanged = (seed: EditorCell, cell: EditorCell): boolean =>
+  seed.avail !== cell.avail ||
+  seed.weights.length !== cell.weights.length ||
+  seed.weights.some((weight, k) => weight !== cell.weights[k]);
+
+/**
+ * Turn an edited grid back into one hand-keyed range per action, keeping each
+ * action's original hands wherever the editor didn't touch them. `original`
+ * holds each action's range in editor action order, `seed` the cells the
+ * editor opened with, and `cells` the cells after editing.
+ *
+ * A combo whose cell still equals its seed cell (same `avail`, same weights)
+ * keeps every action's original hands verbatim, so input the whole-percent grid
+ * can't represent — a single suit (`AhKh:0.7`) or a fractional weight
+ * (`QQ:0.333`) — survives a save. A changed combo is rebuilt from the cells as
+ * `cellsToComboWeights` does. An action whose original is `null` (e.g. an
+ * implicit fold) is always rebuilt from the cells in full.
+ *
+ * Each rebuilt combo takes its first original hand's place, and combos the
+ * original didn't have follow in matrix order, so an unedited range formats
+ * back to the string it came from.
+ */
+export function cellsToRanges(
+  original: (HandFrequency[] | null)[],
+  seed: EditorCell[],
+  cells: EditorCell[],
+): HandFrequency[][] {
+  const changed = new Set(
+    COMBOS.filter((_, i) => cellChanged(seed[i], cells[i])),
+  );
+  return original.map((hands, k) => {
+    const rebuilt = cellsToComboWeights(cells, k);
+    if (hands === null) return expandComboWeights(rebuilt);
+
+    const expand = (combo: string) => {
+      const weight = rebuilt.get(combo);
+      return weight ? expandComboWeights(new Map([[combo, weight]])) : [];
+    };
+    const out: HandFrequency[] = [];
+    const placed = new Set<string>();
+    for (const hand of hands) {
+      const combo = comboOf(hand.hand);
+      if (!changed.has(combo)) {
+        out.push(hand);
+      } else if (!placed.has(combo)) {
+        placed.add(combo);
+        out.push(...expand(combo));
+      }
+    }
+    for (const combo of changed) {
+      if (!placed.has(combo)) out.push(...expand(combo));
+    }
+    return out;
   });
 }

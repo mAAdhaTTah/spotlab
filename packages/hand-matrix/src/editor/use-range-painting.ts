@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { COMBO_INDEX, type EditorCell } from "./cells";
+import { COMBO_INDEX, withCell, type EditorCell } from "./cells";
 
 export type PaintTool = "brush" | "eyedropper";
 
@@ -43,10 +43,9 @@ export function useRangePainting(opts: {
   const paintCell = useCallback(
     (combo: string) => {
       const current = cellsRef.current;
-      const index = COMBO_INDEX.get(combo)!;
-      if (current[index].avail <= 0) return;
-      const next = current.slice();
-      next[index] = { avail: current[index].avail, weights: [...brush] };
+      const { avail } = current[COMBO_INDEX.get(combo)!];
+      if (avail <= 0) return;
+      const next = withCell(current, combo, { avail, weights: [...brush] });
       cellsRef.current = next;
       onCellsChange(next);
     },

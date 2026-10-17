@@ -72,6 +72,25 @@ export function toComboWeights(hands: HandFrequency[]): Map<string, number> {
   }
 }
 
+/**
+ * Expand per-combo weights to a hand-keyed range: every hand of each combo
+ * takes that combo's weight, and zero-weight combos are dropped. The inverse
+ * of `toComboWeights` — `toComboWeights(expandComboWeights(m))` gives back `m`,
+ * up to float rounding — though not the other way round, since the collapse
+ * averages over a combo's hands. Throws `SpotlabInputError` for a key that
+ * isn't a combo or a weight outside `[0, 1]`, as `parseRange` does.
+ */
+export function expandComboWeights(
+  weights: Map<string, number>,
+): HandFrequency[] {
+  assertInitialized("expandComboWeights");
+  try {
+    return wasm.from_combo_weights([...weights]) as HandFrequency[];
+  } catch (raw) {
+    throw SpotlabInputError.fromWasm(raw);
+  }
+}
+
 /** Every hand in the deck at weight 1 — the unconstrained range. */
 export function fullRange(): HandFrequency[] {
   assertInitialized("fullRange");

@@ -470,6 +470,58 @@ impl Range {
             .collect()
     }
 
+    /// Expand per-combo weights to a hand-keyed range: every hand of each combo takes that
+    /// combo's weight. The inverse of [`Range::to_combo_weights`] — `from_combo_weights(m)`
+    /// collapses back to `m`, up to float rounding in the mean — though not the other way round, since the collapse averages over
+    /// a combo's hands and so loses any per-suit difference.
+    ///
+    /// Zero-weight combos are dropped, as everywhere in a [`Range`]. Rejects a key that isn't
+    /// one of the 169 [`COMBOS`] with [`RangeParseError::Invalid`], and a weight outside
+    /// `[0, 1]` with [`RangeParseError::FrequencyOutOfRange`] — the same errors [`Range::parse`]
+    /// gives for the equivalent string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spotlab_range::Range;
+    ///
+    /// let range = Range::from_combo_weights([("AKs", 0.5), ("QQ", 1.0), ("72o", 0.0)]).unwrap();
+    /// assert_eq!(range.hand_frequency("AhKh"), 0.5);
+    /// assert_eq!(range.hand_frequency("QcQd"), 1.0);
+    /// assert_eq!(range.to_string(), "AKs:0.5,QQ");
+    ///
+    /// assert!(Range::from_combo_weights([("AKx", 1.0)]).is_err());
+    /// assert!(Range::from_combo_weights([("AKs", 1.5)]).is_err());
+    /// ```
+    pub fn from_combo_weights<I, S>(weights: I) -> Result<Self, RangeParseError>
+    where
+        I: IntoIterator<Item = (S, f64)>,
+        S: AsRef<str>,
+    {
+        let mut hands = Vec::new();
+        for (combo, weight) in weights {
+            let combo = combo.as_ref();
+            if !COMBOS.contains(&combo) {
+                return Err(RangeParseError::Invalid(format!("unknown combo `{combo}`")));
+            }
+            if !(0.0..=1.0).contains(&weight) {
+                return Err(RangeParseError::FrequencyOutOfRange {
+                    combo: combo.to_string(),
+                    frequency: weight,
+                });
+            }
+            hands.extend(
+                Hand::from_combo(combo)
+                    .into_iter()
+                    .map(|hand| HandFrequency {
+                        hand,
+                        frequency: weight,
+                    }),
+            );
+        }
+        Ok(Self::from_hand_frequencies(hands))
+    }
+
     /// Whether `self` and `other` assign the same weight to every hand, within
     /// [`WEIGHT_TOLERANCE`]. Built on [`Range::first_divergence`], so a hand present in only one
     /// range still counts as a difference.

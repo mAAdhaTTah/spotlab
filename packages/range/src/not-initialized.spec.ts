@@ -4,6 +4,7 @@ import {
   RANKS,
   SUITS,
   comboOf,
+  expandComboWeights,
   formatRange,
   fullRange,
   handsOfCombo,
@@ -22,6 +23,7 @@ describe("before initRange() resolves", () => {
     ["comboOf", () => comboOf("AsKd")],
     ["handsOfCombo", () => handsOfCombo("AKs")],
     ["toComboWeights", () => toComboWeights([])],
+    ["expandComboWeights", () => expandComboWeights(new Map())],
     ["fullRange", () => fullRange()],
   ])("%s throws RangeNotInitializedError", (name, call) => {
     expect(call).toThrow(RangeNotInitializedError);
