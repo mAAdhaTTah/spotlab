@@ -1,5 +1,11 @@
 # @spotlab/range
 
+## 0.3.0 — 2026-10-17
+
+### Minor changes
+
+- [e5c307c](https://github.com/mAAdhaTTah/spotlab/commit/e5c307c806aae67c338a25a92c353f9571c822f9) Add `expandComboWeights`, which expands a per-combo weight map to every hand of each combo. It is the inverse of `toComboWeights` and throws `SpotlabInputError` for an unknown combo or a weight outside [0, 1].
+
 ## 0.2.0 — 2026-10-16
 
 ### Minor changes

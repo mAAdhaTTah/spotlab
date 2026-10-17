@@ -1,5 +1,15 @@
 # @spotlab/hand-matrix
 
+## 0.3.0 — 2026-10-17
+
+### Minor changes
+
+- [e5c307c](https://github.com/mAAdhaTTah/spotlab/commit/e5c307c806aae67c338a25a92c353f9571c822f9) Add `cellsToRanges`, which turns an edited grid back into one range per action. Combos the user did not repaint keep their original hands verbatim, so suit-specific and fractional weights survive a save.
+
+### Patch changes
+
+- Updated dependencies: @spotlab/range (npm)@0.3.0
+
 ## 0.2.0 — 2026-10-16
 
 ### Minor changes

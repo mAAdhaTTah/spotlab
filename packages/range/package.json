@@ -1,6 +1,6 @@
 {
   "name": "@spotlab/range",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A poker range-string parser and serializer, compiled from Rust to wasm: combo/hand grammar, canonical hand tokens, and weighted-range arithmetic.",
   "type": "module",
   "license": "MIT",
