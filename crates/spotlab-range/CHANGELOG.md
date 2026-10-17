@@ -1,5 +1,11 @@
 # spotlab-range
 
+## 0.3.0 — 2026-10-17
+
+### Minor changes
+
+- [e5c307c](https://github.com/mAAdhaTTah/spotlab/commit/e5c307c806aae67c338a25a92c353f9571c822f9) Add `Range::from_combo_weights`, which expands per-combo weights to every hand of each combo. It is the inverse of `to_combo_weights` and rejects unknown combos and out-of-range weights.
+
 ## 0.2.0 — 2026-10-16
 
 ### Minor changes

@@ -1,6 +1,6 @@
 {
   "name": "@spotlab/hand-matrix",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A 13x13 poker hand-matrix React component: the read-only grid primitive and a range-string-aware display component, themed through CSS custom properties.",
   "type": "module",
   "license": "MIT",
@@ -40,7 +40,7 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@spotlab/range": "workspace:^0.2.0",
+    "@spotlab/range": "workspace:^0.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
