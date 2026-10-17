@@ -37,12 +37,12 @@ export default defineConfig(async () => ({
         ],
         test: {
           name: "storybook",
+          api: { port: await getEphemeralPort() },
           browser: {
             enabled: true,
             headless: true,
             provider: playwright(),
             instances: [{ browser: "chromium" }],
-            api: { port: await getEphemeralPort() },
           },
         },
       },
