@@ -1,10 +1,25 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, mocked, spyOn } from "storybook/test";
 import { HandMatrix } from "./hand-matrix";
-import { dragAcross, firePointer, labelFor, rootOf } from "./fixtures";
+import {
+  dragAcross,
+  firePointer,
+  labelFor,
+  mockEditorActions,
+  mockEditorOrder,
+  mockVariedEditorCells,
+  rootOf,
+} from "./fixtures";
 
+// `HandMatrix` is internal: these stories cover the grid and pointer handling
+// that `RangeMatrix` and `RangeMatrixEditor` share.
 const meta: Meta<typeof HandMatrix> = {
   component: HandMatrix,
+  args: {
+    cells: mockVariedEditorCells,
+    actions: mockEditorActions,
+    order: mockEditorOrder,
+  },
 };
 
 export default meta;
@@ -15,16 +30,6 @@ export const Default: Story = {
     expect(await canvas.findByText("AA")).toBeInTheDocument();
     expect(await canvas.findByText("22")).toBeInTheDocument();
     expect(await canvas.findByText("AKs")).toBeInTheDocument();
-  },
-};
-
-export const WithComboStyle: Story = {
-  args: {
-    comboStyle: (combo) =>
-      combo === "AA" ? { backgroundColor: "#22c55e", color: "white" } : {},
-  },
-  async play({ canvas }) {
-    expect(await canvas.findByText("AA")).toBeInTheDocument();
   },
 };
 

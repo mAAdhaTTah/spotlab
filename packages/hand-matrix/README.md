@@ -5,13 +5,13 @@ and [`@spotlab/range`](../range) — no Tailwind, no bundler-plugin
 requirement.
 
 ```tsx
-import { RangeGrid } from "@spotlab/hand-matrix";
+import { RangeMatrix, rangeToMatrix } from "@spotlab/hand-matrix";
 import "@spotlab/hand-matrix/style.css";
 import { initRange } from "@spotlab/range";
 
 await initRange(); // once, at startup
 
-<RangeGrid range="AKs:0.5,QQ" />;
+<RangeMatrix {...rangeToMatrix("AKs:0.5,QQ")} />;
 ```
 
 ## Exports
@@ -20,31 +20,33 @@ Everything below is exported from the package root.
 
 ### Display
 
-- `HandMatrix` — the bare 13x13 grid primitive. Takes no range data; styling
-  is entirely the caller's job via `comboStyle`, keyed by combo string (e.g.
-  `"AKs"`). Each cell carries a `data-combo` attribute. Props:
-  - `comboStyle?: (combo) => CSSProperties` — per-cell style.
-  - `onPointerDown?`, `onPointerEnter?: CellPointerHandler` — the
-    `(combo, event)` handlers to use for dragging across cells, with a mouse
-    or a finger. `onPointerDown` releases the implicit pointer capture a
-    touch takes on its first cell. `onPointerEnter` fires once each time the
-    pointer moves onto a new cell, found by hit-testing each `pointermove`
-    (`elementFromPoint`), so it also fires during a touch drag, where
-    enter events never reach the other cells. Passing `onPointerDown` sets
-    `touch-action: none` and `user-select: none` on the grid, so a drag
-    neither scrolls the page nor selects the combo text it crosses.
-  - `className?: string` — merged onto the `.spotlab-hm-root` wrapper.
-- `RangeGrid` — a read-only display component. Accepts the expanded
-  `HandFrequency[]` form or a range string directly (parsed via
-  `@spotlab/range`), and fills each cell to its combo's mean weight. Props:
-  `range: HandFrequency[] | string`, `fill?: string` (a CSS color, defaulting
-  to `var(--spotlab-hm-fill)`), `className?: string`.
-- `cellFillGradient(stops: string[]): string` / `CELL_FILL_DIRECTION` — the
-  canonical left-to-right gradient helper used to render a cell's fill.
-  Returns `"transparent"` for no stops.
+- `RangeMatrix` — the read-only grid, for one range or several actions at
+  once, drawn exactly as `RangeMatrixEditor` draws it but without painting.
+  Each cell stacks its actions' weights as colored bands, dead cells
+  (`avail` 0) are hatched, and capped cells (`avail` below 1) show a cap
+  line with the rest hatched. Each cell carries a `data-combo` attribute.
+  Props (`RangeMatrixProps`):
+  - `cells: EditorCell[]` — one per combo, in `@spotlab/range`'s `COMBOS`
+    order (see [Editing](#editing)).
+  - `actions: EditorActionSpec[]` — index-aligned with each cell's
+    `weights`.
+  - `order: number[]` — indices into `actions`, in the order bands stack.
+    An action left out isn't drawn, so its share of a cell stays
+    transparent; include it to give it a color.
+  - `className?: string`.
+- `rangeToMatrix(range, { color?, labels? }): RangeMatrixProps` (without
+  `className`) — `RangeMatrix`'s props for drawing one range:
+  `<RangeMatrix {...rangeToMatrix(range)} />`. Takes a range string (parsed
+  via `@spotlab/range`) or the expanded `HandFrequency[]` form, and fills
+  each cell to its combo's mean weight in `color` (default
+  `var(--spotlab-hm-fill)`), leaving the rest blank. The returned `actions`
+  are `in` and `out`, labeled by `labels.in` (default `"In range"`) and
+  `labels.out` (default `"Out of range"`), for building your own legend.
+  Memoize the result (e.g. `useMemo`) rather than calling it on every
+  render.
 
-`RangeGrid`'s combo collapse (`toComboWeights`) is a wasm call, so
-`initRange()` must have resolved before rendering it — see
+`rangeToMatrix`'s parse and combo collapse (`toComboWeights`) are wasm
+calls, so `initRange()` must have resolved before calling it — see
 [`@spotlab/range`](../range)'s own README for why that call is explicit
 rather than automatic.
 
@@ -55,9 +57,8 @@ raise). Its state is an array of 169 `EditorCell`s, one per combo in
 `@spotlab/range`'s `COMBOS` order. Every component is fully controlled: state
 goes in as props and changes come out through `on*Change` callbacks.
 
-- `RangeMatrixEditor` — the paintable grid. Draws each cell's action bands,
-  hatches dead cells (`avail` 0), marks capped cells (`avail` below 1), and
-  wires brush/eyedropper painting onto `HandMatrix` for mouse and touch.
+- `RangeMatrixEditor` — the paintable grid: `RangeMatrix`'s cells with
+  brush/eyedropper painting wired on for mouse and touch.
   Props (`RangeMatrixEditorProps`):
   - `cells: EditorCell[]` and `onCellsChange(cells)`.
   - `actions: EditorActionSpec[]` — index-aligned with each cell's
@@ -85,9 +86,9 @@ goes in as props and changes come out through `on*Change` callbacks.
 - `useRangePainting(opts)` — the brush/eyedropper state machine behind
   `RangeMatrixEditor`, for building your own grid. `opts` takes the editor's
   `cells`, `brush`, `tool` and their three `on*Change` callbacks. Returns
-  `{ onCellDown(combo), onCellEnter(combo) }`; wire them to `HandMatrix`'s
-  `onPointerDown`/`onPointerEnter`. A stroke ends on any window `pointerup`
-  or `pointercancel`.
+  `{ onCellDown(combo), onCellEnter(combo) }`: call `onCellDown` when a
+  pointer goes down on a cell and `onCellEnter` each time it moves onto
+  another one. A stroke ends on any window `pointerup` or `pointercancel`.
 - `seedCells(avail, actionWeights, passive): EditorCell[]` — build the
   initial grid from a parent range's per-combo availability (`null` for
   unconstrained) and each action's absolute per-combo weights (the
@@ -115,7 +116,7 @@ goes in as props and changes come out through `on*Change` callbacks.
   is the combo's cap in the parent range and `weights` are each action's
   share of it, summing to 100), `EditorActionSpec`
   (`{ id: string; label: string; color: string }`), `PaintTool`,
-  `CellPointerHandler`, `RangeMatrixEditorProps`, `ActionWeightSlidersProps`,
+  `RangeMatrixEditorProps`, `ActionWeightSlidersProps`,
   `WeightInputProps`.
 
 **The editor works at combo level.** A cell is one of the 169 combos (`AKs`,
@@ -133,7 +134,7 @@ custom property has a default declared on `.spotlab-hm-root`, so the
 component renders correctly with zero theming.
 
 Because the `className` you pass to a component lands on that same root, a
-class that sets variables works there too (`<RangeGrid className="my-theme" />`
+class that sets variables works there too (`<RangeMatrix className="my-theme" … />`
 with `.my-theme { --spotlab-hm-border: … }`), in addition to the
 `.spotlab-hm-root` selector form below.
 
@@ -195,9 +196,10 @@ Available variables: `--spotlab-hm-border`, `--spotlab-hm-border-width`,
 `--spotlab-hm-muted-bg`, `--spotlab-hm-muted-fg`, `--spotlab-hm-track-bg`,
 `--spotlab-hm-row-passive-bg`, `--spotlab-hm-dead-hatch`.
 
-Action/fill colors (`RangeGrid`'s `fill` prop) are **not** theme variables —
-they are data, passed as props. `--spotlab-hm-fill` is only the default used
-when `fill` is omitted.
+Action colors (each `EditorActionSpec`'s `color`, or `rangeToMatrix`'s
+`color` option) are **not** theme variables — they are data, passed as props.
+`--spotlab-hm-fill` is only the default `rangeToMatrix` uses when `color` is
+omitted.
 
 ## License
 
