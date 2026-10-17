@@ -9,9 +9,11 @@ import {
 import {
   COMBOS,
   formatRange,
+  fullRange,
   initRange,
   parseRange,
   toComboWeights,
+  type HandFrequency,
 } from "@spotlab/range";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -178,14 +180,87 @@ describe("cellsToRanges", () => {
     expect(inRange).toEqual(hands);
   });
 
-  it("rebuilds an action with no original range from the cells in full", () => {
+  // What strategy-builder validates on save: for every hand in the deck, the
+  // actions' weights sum to the parent's weight for it (within 1e-6).
+  const expectHandsSumTo = (
+    ranges: HandFrequency[][],
+    parent: HandFrequency[],
+  ) => {
+    const sums = new Map<string, number>();
+    for (const { hand, frequency } of ranges.flat())
+      sums.set(hand, (sums.get(hand) ?? 0) + frequency);
+    const expected = new Map<string, number>(
+      parent.map(({ hand, frequency }) => [hand, frequency]),
+    );
+    for (const { hand } of fullRange()) {
+      expect(sums.get(hand) ?? 0, hand).toBeCloseTo(expected.get(hand) ?? 0, 6);
+    }
+  };
+
+  it("gives a null action what's left of each hand in an unchanged combo", () => {
+    const { seed, original } = open("AhKh:0.7,QQ:0.333,KK+");
+
+    const ranges = cellsToRanges(original, seed, seed);
+    const passive = new Map<string, number>(
+      ranges[PASSIVE].map(({ hand, frequency }) => [hand, frequency]),
+    );
+
+    expect(passive.get("AhKh")).toBe(0.3);
+    expect(passive.get("AsKs")).toBe(1);
+    expect(passive.get("QhQs")).toBe(0.667);
+    expect(passive.has("KhKs")).toBe(false);
+    expect(passive.get("7c2d")).toBe(1);
+    expectHandsSumTo(ranges, fullRange());
+  });
+
+  it("splits what's left of each hand across null actions by cell weight", () => {
+    const raise = parseRange("AhKh:0.7");
+    const seed = withCell(
+      seedCells(null, [toComboWeights(raise), null, null], 2),
+      "AKs",
+      { avail: 1, weights: [18, 30, 52] },
+    );
+
+    const ranges = cellsToRanges([raise, null, null], seed, seed);
+    const frequencyOf = (range: HandFrequency[], hand: string) =>
+      range.find((h) => h.hand === hand)?.frequency;
+
+    expect(frequencyOf(ranges[1], "AhKh")).toBeCloseTo((0.3 * 30) / 82, 8);
+    expect(frequencyOf(ranges[2], "AhKh")).toBeCloseTo((0.3 * 52) / 82, 8);
+    expectHandsSumTo(ranges, fullRange());
+  });
+
+  it("follows a per-hand parent range in unchanged and changed combos", () => {
+    const parent = parseRange("AhKh,AsKs:0.5,QQ");
+    const raise = parseRange("AhKh:0.5,QQ:0.25");
+    const seed = seedCells(
+      toComboWeights(parent),
+      [toComboWeights(raise), null],
+      PASSIVE,
+    );
+    const cells = withCell(seed, "QQ", { avail: 1, weights: [40, 60] });
+
+    const unchanged = cellsToRanges([raise, null], seed, seed, parent);
+    expect(formatRange(unchanged[PASSIVE])).toBe("AhKh:0.5,AsKs:0.5,QQ:0.75");
+    expectHandsSumTo(unchanged, parent);
+
+    const aks = cellFor(seed, "AKs");
+    const repainted = cellsToRanges(
+      [raise, null],
+      seed,
+      withCell(cells, "AKs", { ...aks, weights: [50, 50] }),
+      parent,
+    );
+    expect(formatRange(repainted[IN_RANGE])).toBe("AhKh:0.5,AsKs:0.25,QQ:0.4");
+    expectHandsSumTo(repainted, parent);
+  });
+
+  it("treats a null parent range as every hand at weight 1", () => {
     const { seed, original } = open("AhKh:0.7,KK+");
 
-    const [, passive] = cellsToRanges(original, seed, seed);
-
-    expect(toComboWeights(passive).get("KK")).toBe(0);
-    expect(toComboWeights(passive).get("72o")).toBe(1);
-    expect(toComboWeights(passive).get("AKs")).toBeCloseTo(0.82);
+    expect(cellsToRanges(original, seed, seed, null)).toEqual(
+      cellsToRanges(original, seed, seed),
+    );
   });
 
   it("splits a changed combo across every action", () => {
