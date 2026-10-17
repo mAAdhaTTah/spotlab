@@ -4,16 +4,13 @@ import { expect, fn } from "storybook/test";
 import { RangeMatrixEditor } from "./matrix-editor";
 import type { PaintTool } from "./use-range-painting";
 import {
-  backgroundImageOf,
-  cellsWith,
+  cellFor,
   dragAcross,
   expectStrokePainted,
   firePointer,
-  gradient,
   labelFor,
-  mockBandActions,
-  mockBandColors,
   mockCappedCombo,
+  mockDeadCombo,
   mockEditorActions,
   mockEditorCells,
   mockEditorOrder,
@@ -40,66 +37,28 @@ const meta: Meta<typeof RangeMatrixEditor> = {
 export default meta;
 type Story = StoryObj<typeof RangeMatrixEditor>;
 
-const { red: RED, blue: BLUE, clear: CLEAR } = mockBandColors;
-
-// `order` covers only the first action, so whatever weight it leaves stays
-// transparent rather than taking the last band's color.
-export const PartialOrderBands: Story = {
-  args: {
-    actions: mockBandActions,
-    order: [0],
-    cells: cellsWith(
-      { avail: 1, weights: [50, 50] },
-      {
-        KK: { avail: 1, weights: [0, 100] },
-        // A capped cell's band layer is already sized to `avail`, so its bands
-        // span that layer instead of being scaled by `avail` again.
-        AKs: { avail: 0.5, weights: [100, 0] },
-        AQs: { avail: 0.5, weights: [50, 50] },
-      },
-    ),
-  },
+// What the editor adds to `RangeMatrix`'s cells: a pointer to paint with,
+// not-allowed on dead cells, and a drag surface for strokes.
+export const BrushCursor: Story = {
+  args: { cells: mockVariedEditorCells },
   play: async ({ canvasElement }) => {
     const root = rootOf(canvasElement);
-    expect(backgroundImageOf(root, "AA")).toBe(
-      gradient(`${RED} 0%`, `${RED} 50%`, `${CLEAR} 50%`, `${CLEAR} 100%`),
-    );
-    expect(backgroundImageOf(root, "KK")).toBe("none");
-    expect(
-      backgroundImageOf(root, "AKs").endsWith(
-        gradient(`${RED} 0%`, `${RED} 100%`),
-      ),
-    ).toBe(true);
-    expect(
-      backgroundImageOf(root, "AQs").endsWith(
-        gradient(`${RED} 0%`, `${RED} 50%`, `${CLEAR} 50%`, `${CLEAR} 100%`),
-      ),
-    ).toBe(true);
+    const cursorOf = (combo: string) =>
+      getComputedStyle(cellFor(root, combo)).cursor;
+    expect(cursorOf("AA")).toBe("pointer");
+    expect(cursorOf(mockCappedCombo)).toBe("pointer");
+    expect(cursorOf(mockDeadCombo)).toBe("not-allowed");
+    expect(getComputedStyle(root).touchAction).toBe("none");
   },
 };
 
-// Bands that fill the cell end exactly at 100%, with no transparent tail.
-export const FullOrderBands: Story = {
-  args: {
-    actions: mockBandActions,
-    order: [1, 0],
-    cells: cellsWith({ avail: 1, weights: [30, 70] }, {}),
-  },
-  play: async ({ canvasElement }) => {
-    expect(backgroundImageOf(rootOf(canvasElement), "AA")).toBe(
-      gradient(`${BLUE} 0%`, `${BLUE} 70%`, `${RED} 70%`, `${RED} 100%`),
-    );
-  },
-};
-
-export const PartiallyCapped: Story = {
+export const EyedropperCursor: Story = {
+  args: { cells: mockVariedEditorCells, tool: "eyedropper" },
   play: async ({ canvasElement }) => {
     const root = rootOf(canvasElement);
-    expect(backgroundImageOf(root, mockCappedCombo)).toContain(
-      "repeating-linear-gradient",
-    );
-    expect(backgroundImageOf(root, "AA")).not.toContain(
-      "repeating-linear-gradient",
+    expect(getComputedStyle(cellFor(root, "AA")).cursor).toBe("copy");
+    expect(getComputedStyle(cellFor(root, mockDeadCombo)).cursor).toBe(
+      "not-allowed",
     );
   },
 };

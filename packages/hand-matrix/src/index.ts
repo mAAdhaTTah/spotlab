@@ -1,10 +1,5 @@
-export {
-  HandMatrix,
-  cellFillGradient,
-  CELL_FILL_DIRECTION,
-  type CellPointerHandler,
-} from "./hand-matrix";
-export { RangeGrid } from "./range-grid";
+export { RangeMatrix, type RangeMatrixProps } from "./range-matrix";
+export { rangeToMatrix } from "./range-to-matrix";
 
 export {
   RangeMatrixEditor,

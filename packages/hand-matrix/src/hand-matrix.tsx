@@ -5,29 +5,78 @@ import {
   useRef,
 } from "react";
 import { COMBOS } from "@spotlab/range";
+import { COMBO_INDEX, type EditorCell } from "./editor/cells";
+import type { EditorActionSpec } from "./editor/weights";
 
 const chunk = (arr: readonly string[], size: number) =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
     arr.slice(i * size, i * size + size),
   );
 
-// Canonical fill direction for a matrix cell's weight/band gradient — left to right — shared so
-// every consumer's gradient stays on the same axis.
-export const CELL_FILL_DIRECTION = "to right";
+const cellFillGradient = (stops: string[]): string =>
+  `linear-gradient(to right, ${stops.join(", ")})`;
 
-export const cellFillGradient = (stops: string[]): string =>
-  stops.length === 0
-    ? "transparent"
-    : `linear-gradient(${CELL_FILL_DIRECTION}, ${stops.join(", ")})`;
+/**
+ * A cell's stacked action bands, as a gradient across the band layer. For a
+ * capped cell that layer is already sized to the cell's `avail`, so the bands
+ * are laid out relative to the layer, not scaled by `avail` a second time.
+ * Whatever `order` leaves uncovered stays transparent rather than letting the
+ * last band's color run on to the edge. `none` when no band is drawn.
+ */
+const bandBackground = (
+  cell: EditorCell,
+  actions: EditorActionSpec[],
+  order: number[],
+): string => {
+  const stops: string[] = [];
+  let cursor = 0;
+  order.forEach((k) => {
+    const fraction = (cell.weights[k] || 0) / 100;
+    if (fraction <= 0) return;
+    const color = actions[k].color;
+    stops.push(`${color} ${cursor * 100}%`);
+    stops.push(`${color} ${(cursor + fraction) * 100}%`);
+    cursor += fraction;
+  });
+  // The epsilon keeps float noise in weights summing to 100 from adding a sliver of a tail.
+  if (stops.length > 0 && cursor < 1 - 1e-9) {
+    stops.push(`transparent ${cursor * 100}% 100%`);
+  }
+  return stops.length > 0 ? cellFillGradient(stops) : "none";
+};
 
-export type CellPointerHandler = (
+// Only ever `background-image` (never the `background` shorthand, which resets
+// `background-color`), so the themed `--spotlab-hm-cell-bg` shows through
+// wherever a cell's bands leave it uncovered.
+const cellStyle = (
+  cell: EditorCell,
+  actions: EditorActionSpec[],
+  order: number[],
+): CSSProperties => {
+  if (cell.avail <= 0) {
+    return {
+      backgroundImage: "var(--spotlab-hm-dead-hatch)",
+      backgroundColor: "var(--spotlab-hm-muted-bg)",
+      color: "var(--spotlab-hm-muted-fg)",
+    };
+  }
+  if (cell.avail < 1) {
+    const capLeft = `${cell.avail * 100}%`;
+    const capBorder = `repeating-linear-gradient(180deg, var(--spotlab-hm-muted-fg) 0 4px, transparent 4px 8px)`;
+    return {
+      backgroundImage: `${capBorder}, var(--spotlab-hm-dead-hatch), ${bandBackground(cell, actions, order)}`,
+      backgroundSize: `1px 100%, ${(1 - cell.avail) * 100}% 100%, ${cell.avail * 100}% 100%`,
+      backgroundPosition: `${capLeft} center, right center, left center`,
+      backgroundRepeat: "no-repeat, no-repeat, no-repeat",
+    };
+  }
+  return { backgroundImage: bandBackground(cell, actions, order) };
+};
+
+type CellPointerHandler = (
   combo: string,
   event: ReactPointerEvent<HTMLDivElement>,
 ) => void;
-
-type ComboStyleProp = {
-  comboStyle?: (combo: string) => CSSProperties;
-};
 
 type GridPointerHandlers = {
   /**
@@ -72,41 +121,6 @@ const comboAtPoint = (
   return cell.getAttribute("data-combo");
 };
 
-type CellProps = ComboStyleProp & { onPointerDown?: CellPointerHandler };
-
-const Combo: FC<{ combo: string } & CellProps> = ({
-  combo,
-  onPointerDown,
-  comboStyle,
-}) => {
-  return (
-    <div
-      className="spotlab-hm-cell"
-      data-combo={combo}
-      style={comboStyle?.(combo)}
-      onPointerDown={
-        onPointerDown &&
-        ((event) => {
-          releaseImplicitCapture(event);
-          onPointerDown(combo, event);
-        })
-      }
-    >
-      <div className="spotlab-hm-cell-inner">
-        <div data-combo={combo}>{combo}</div>
-      </div>
-    </div>
-  );
-};
-
-const Row: FC<{ row: string[] } & CellProps> = ({ row, ...cellProps }) => (
-  <div className="spotlab-hm-row">
-    {row.map((combo, j) => (
-      <Combo key={j} combo={combo} {...cellProps} />
-    ))}
-  </div>
-);
-
 // A drag across the grid should neither scroll the page (`touch-action`), select the combo
 // text it crosses (`user-select`, prefixed for Safari), nor open iOS's long-press callout.
 const dragSurfaceStyle: CSSProperties = {
@@ -116,14 +130,43 @@ const dragSurfaceStyle: CSSProperties = {
   WebkitTouchCallout: "none",
 };
 
+/** The cell data both `RangeMatrix` and `RangeMatrixEditor` draw from. */
+export type MatrixDisplayProps = {
+  /** The 169-cell grid, in `@spotlab/range`'s `COMBOS` order. */
+  cells: EditorCell[];
+  /** Index-aligned with each cell's `weights` array. */
+  actions: EditorActionSpec[];
+  /**
+   * Indices into `actions`/`weights`, in the order bands should stack. An
+   * action left out isn't drawn, so its share of a cell stays transparent.
+   */
+  order: number[];
+  className?: string;
+};
+
 /**
- * The bare 13x13 grid. Each cell carries a `data-combo` attribute. Passing
- * `onPointerDown` marks the grid as a drag surface (`dragSurfaceStyle`): a
- * drag reaches the handlers instead of scrolling the page or selecting text.
+ * The 13x13 grid that `RangeMatrix` and `RangeMatrixEditor` both render, so
+ * the two draw cells identically: each cell stacks its actions' weights as
+ * bands in `order`, with dead and capped cells marked. Each cell carries a
+ * `data-combo` attribute. The editor adds a per-cell cursor and the painting
+ * handlers; passing `onPointerDown` also makes the grid a drag surface
+ * (`dragSurfaceStyle`), so a drag reaches the handlers instead of scrolling
+ * the page or selecting text. Internal: not exported from the package root.
  */
 export const HandMatrix: FC<
-  { className?: string } & ComboStyleProp & GridPointerHandlers
-> = ({ className, onPointerDown, onPointerEnter, ...cellProps }) => {
+  MatrixDisplayProps &
+    GridPointerHandlers & {
+      cursorOf?: (cell: EditorCell) => CSSProperties["cursor"];
+    }
+> = ({
+  cells,
+  actions,
+  order,
+  className,
+  cursorOf,
+  onPointerDown,
+  onPointerEnter,
+}) => {
   // The cell the pointer was last resolved to, so `onPointerEnter` fires once per cell change.
   const lastComboRef = useRef<string | null>(null);
 
@@ -158,7 +201,33 @@ export const HandMatrix: FC<
       onPointerLeave={onPointerEnter && (() => (lastComboRef.current = null))}
     >
       {chunk(COMBOS, 13).map((row, i) => (
-        <Row key={i} row={row} onPointerDown={onPointerDown} {...cellProps} />
+        <div key={i} className="spotlab-hm-row">
+          {row.map((combo) => {
+            const cell = cells[COMBO_INDEX.get(combo)!];
+            return (
+              <div
+                key={combo}
+                className="spotlab-hm-cell"
+                data-combo={combo}
+                style={{
+                  ...cellStyle(cell, actions, order),
+                  cursor: cursorOf?.(cell),
+                }}
+                onPointerDown={
+                  onPointerDown &&
+                  ((event) => {
+                    releaseImplicitCapture(event);
+                    onPointerDown(combo, event);
+                  })
+                }
+              >
+                <div className="spotlab-hm-cell-inner">
+                  <div data-combo={combo}>{combo}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ))}
     </div>
   );
