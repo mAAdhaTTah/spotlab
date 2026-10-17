@@ -24,3 +24,6 @@
 
 - Updated dependencies: @spotlab/range (npm)@0.2.0
 
+## 0.1.0 — 2026-10-16
+
+Initial release. React components for a 13x13 hand matrix: the `HandMatrix` grid, the range-string-aware `RangeGrid`, and the `RangeMatrixEditor` for painting per-action weights, with its `ActionWeightSliders` and cell helpers (`seedCells`, `cellsToComboWeights`, `comboWeightsToCells`, `rebalance`), and the `useRangePainting` hook. Themed through CSS custom properties.
