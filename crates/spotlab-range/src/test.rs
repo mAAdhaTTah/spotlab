@@ -3,7 +3,7 @@ use rstest::rstest;
 
 use std::collections::HashSet;
 
-use super::{Hand, HandFrequency, Range, RangeParseError, COMBOS, RANKS};
+use super::{Hand, HandFrequency, Range, RangeParseError, COMBOS, RANKS, WEIGHT_TOLERANCE};
 
 fn hf(hand: &str, frequency: f64) -> HandFrequency {
     HandFrequency {
@@ -574,6 +574,66 @@ fn to_combo_weights_equals_the_shared_weight_for_a_suit_symmetric_range() {
     let weights = range.to_combo_weights();
     assert_eq!(weights.get("AKs").copied(), Some(0.5));
     assert_eq!(weights.get("QQ").copied(), Some(1.0));
+}
+
+#[rstest]
+fn from_combo_weights_gives_every_hand_of_a_combo_its_weight() {
+    let range = Range::from_combo_weights([("AKs", 0.5), ("QQ", 1.0)]).unwrap();
+    for hand in Hand::from_combo("AKs") {
+        assert_eq!(range.hand_frequency(hand.as_str()), 0.5);
+    }
+    for hand in Hand::from_combo("QQ") {
+        assert_eq!(range.hand_frequency(hand.as_str()), 1.0);
+    }
+    assert_eq!(range.to_hand_frequencies().len(), 4 + 6);
+}
+
+#[rstest]
+fn from_combo_weights_drops_zero_weight_combos() {
+    let range = Range::from_combo_weights([("AKo", 0.0), ("QQ", 1.0)]).unwrap();
+    assert_eq!(range.hand_frequency("AsKd"), 0.0);
+    assert_eq!(range.to_hand_frequencies().len(), 6);
+}
+
+#[rstest]
+fn from_combo_weights_round_trips_through_to_combo_weights() {
+    let weights = Range::parse("QQ+,AKs:0.25,AKo:0.5,72o:0.333")
+        .unwrap()
+        .to_combo_weights();
+    let round_tripped = Range::from_combo_weights(weights.clone())
+        .unwrap()
+        .to_combo_weights();
+    assert_eq!(round_tripped.len(), weights.len());
+    for (combo, weight) in &weights {
+        assert!(
+            (round_tripped[combo] - weight).abs() < WEIGHT_TOLERANCE,
+            "{combo}: {} != {weight}",
+            round_tripped[combo]
+        );
+    }
+}
+
+#[rstest]
+#[case::unknown("AKx")]
+#[case::empty("")]
+#[case::a_hand_not_a_combo("AsKs")]
+fn from_combo_weights_rejects_a_key_that_is_not_a_combo(#[case] combo: &str) {
+    assert!(matches!(
+        Range::from_combo_weights([(combo, 1.0)]),
+        Err(RangeParseError::Invalid(_))
+    ));
+}
+
+#[rstest]
+#[case::above_one(1.5)]
+#[case::negative(-0.1)]
+#[case::nan(f64::NAN)]
+fn from_combo_weights_rejects_a_weight_outside_zero_to_one(#[case] weight: f64) {
+    let err = Range::from_combo_weights([("AKs", weight)]).unwrap_err();
+    assert!(matches!(
+        err,
+        RangeParseError::FrequencyOutOfRange { ref combo, .. } if combo == "AKs"
+    ));
 }
 
 // Shorthand grammar: `+` extends a pair up to `AA` or a kicker up to just below the high card;

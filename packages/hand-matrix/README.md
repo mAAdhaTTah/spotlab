@@ -95,6 +95,13 @@ goes in as props and changes come out through `on*Change` callbacks.
   produces).
 - `cellsToComboWeights(cells, actionIndex): Map<string, number>` — collapse
   one action back to absolute per-combo weights, ready to save as a range.
+- `cellsToRanges(original, seed, cells): HandFrequency[][]` — turn the
+  edited grid back into one hand-keyed range per action. `original` holds
+  each action's range (or `null`) in editor action order, `seed` the cells
+  the editor opened with, and `cells` the cells after editing. Combos whose
+  cell still matches its seed keep each action's original hands verbatim;
+  changed combos, and every combo of a `null` action, are rebuilt from the
+  cells.
 - `comboWeightsToCells(cells, actionWeights, passive): EditorCell[]` — the
   inverse: re-derive the cells' conditional weights from absolute
   per-action ranges, keeping each cell's `avail`.
@@ -109,10 +116,10 @@ goes in as props and changes come out through `on*Change` callbacks.
   `WeightInputProps`.
 
 **The editor works at combo level.** A cell is one of the 169 combos (`AKs`,
-`AKo`, `QQ`), so suit-specific hands such as `AsKd` don't survive a round
-trip: `seedCells` takes combo weights, and `cellsToComboWeights` returns
-them. To keep suit-specific hands, set them aside before editing and add them
-back to the result yourself.
+`AKo`, `QQ`) at a whole-percent weight, so suit-specific hands such as
+`AsKd:0.7` and fractional weights such as `QQ:0.333` can't be shown exactly:
+`seedCells` takes combo weights, and `cellsToComboWeights` returns them. Save
+with `cellsToRanges` to keep them for every combo the user didn't repaint.
 
 ## Theming
 

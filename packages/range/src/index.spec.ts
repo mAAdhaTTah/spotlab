@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   comboOf,
+  expandComboWeights,
   formatRange,
   fullRange,
   handsOfCombo,
@@ -138,6 +139,48 @@ describe("combo helpers", () => {
     const weights = toComboWeights(parseRange("AsKs:1,AdKd:0"));
     expect(weights.get("AKs")).toBeCloseTo(0.25);
     expect(weights.get("AA")).toBe(0);
+  });
+
+  it("expandComboWeights gives every hand of a combo its weight", () => {
+    const hands = expandComboWeights(
+      new Map([
+        ["AKs", 0.5],
+        ["72o", 0],
+      ]),
+    );
+    expect(hands).toEqual(
+      handsOfCombo("AKs").map((hand) => ({ hand, frequency: 0.5 })),
+    );
+  });
+
+  it("expandComboWeights is undone by toComboWeights", () => {
+    const weights = toComboWeights(parseRange("QQ+,AKs:0.25,72o:0.333"));
+    const roundTripped = toComboWeights(expandComboWeights(weights));
+    expect(roundTripped.size).toBe(weights.size);
+    for (const [combo, weight] of weights) {
+      expect(roundTripped.get(combo)).toBeCloseTo(weight, 12);
+    }
+  });
+
+  it("expandComboWeights rejects a key that is not a combo", () => {
+    expect(() => expandComboWeights(new Map([["AKx", 1]]))).toThrow(
+      expect.objectContaining({
+        name: "SpotlabInputError",
+        kind: "invalid",
+        message: "unknown combo `AKx`",
+      }),
+    );
+  });
+
+  it("expandComboWeights rejects a weight outside [0, 1]", () => {
+    expect(() => expandComboWeights(new Map([["AKs", 1.5]]))).toThrow(
+      expect.objectContaining({
+        name: "SpotlabInputError",
+        kind: "frequencyOutOfRange",
+        combo: "AKs",
+        frequency: 1.5,
+      }),
+    );
   });
 
   it("fullRange has every hand at weight 1", () => {

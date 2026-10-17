@@ -73,6 +73,17 @@ pub fn to_combo_weights(hands: JsValue) -> Result<JsValue, JsValue> {
     Ok(serialize(&range.to_combo_weights()))
 }
 
+/// Expand per-combo weights to a hand-keyed range (see
+/// [`spotlab_range::Range::from_combo_weights`]). Takes `[combo, weight]` pairs rather than the JS
+/// `Map` itself, so the npm wrapper owns the `Map` shape and the boundary stays a plain array.
+#[wasm_bindgen(js_name = from_combo_weights)]
+pub fn from_combo_weights(weights: JsValue) -> Result<JsValue, JsValue> {
+    let weights: Vec<(String, f64)> = serde_wasm_bindgen::from_value(weights)
+        .map_err(|error| to_js_error(RangeParseError::Invalid(error_message(error))))?;
+    let range = Range::from_combo_weights(weights).map_err(to_js_error)?;
+    Ok(serialize(&range.to_hand_frequencies()))
+}
+
 /// Every hand in the deck at weight 1 — the unconstrained range.
 #[wasm_bindgen(js_name = full_range)]
 pub fn full_range() -> JsValue {

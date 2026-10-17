@@ -19,6 +19,7 @@ export { useRangePainting, type PaintTool } from "./editor/use-range-painting";
 export {
   seedCells,
   cellsToComboWeights,
+  cellsToRanges,
   comboWeightsToCells,
   type EditorCell,
 } from "./editor/cells";
