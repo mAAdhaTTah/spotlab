@@ -25,5 +25,5 @@ specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "functi
 specta-typescript = { version = "=0.0.12", optional = true }
 
 [dev-dependencies]
-rstest = "0.27.0"
+rstest = "0.28.0"
 pretty_assertions = "1.4.1"
