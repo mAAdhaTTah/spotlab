@@ -42,8 +42,6 @@ jobs:
         with:
           cache: true
 
-      # The Sampo CLI is a root devDependency, pinned by the lockfile and matching the sampo-core
-      # bundled by release.yml's action; see RELEASING.md. Root only: the packages aren't needed.
       - name: Install Sampo
         run: |
           pnpm install --frozen-lockfile --filter spotlab
