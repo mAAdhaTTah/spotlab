@@ -32,17 +32,22 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0 # the script diffs the manifests against the merge base with main
 
-      # Same CLI version as release.yml's action bundles; see RELEASING.md.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: "package.json"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      # The Sampo CLI is a root devDependency, pinned by the lockfile and matching the sampo-core
+      # bundled by release.yml's action; see RELEASING.md. Root only: the packages aren't needed.
       - name: Install Sampo
         run: |
-          gh release download cargo-sampo-v0.23.0 --repo bruits/sampo \
-            --pattern sampo-0.23.0-x86_64-unknown-linux-gnu.tar.gz --dir "$RUNNER_TEMP"
-          echo "d526913cd5283ec18ac280b515916f44cd0c51a3a22dd780ddce791235354ed6  $RUNNER_TEMP/sampo-0.23.0-x86_64-unknown-linux-gnu.tar.gz" | sha256sum --check
-          mkdir -p "$RUNNER_TEMP/bin"
-          tar -xzf "$RUNNER_TEMP/sampo-0.23.0-x86_64-unknown-linux-gnu.tar.gz" -C "$RUNNER_TEMP/bin" sampo
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          pnpm install --frozen-lockfile --filter spotlab
+          echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
 
       # ubuntu-latest's python3 is 3.12, which has tomllib.
       - name: Add changesets for the manifest changes

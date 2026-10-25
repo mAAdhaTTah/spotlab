@@ -22,6 +22,16 @@
         "bruits/sampo/crates/sampo-github-action"
       ],
       "versioning": "regex:^cargo-sampo-github-action-v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+    },
+    {
+      "description": "The Sampo CLI must match the sampo-core bundled by the release action; see RELEASING.md",
+      "groupName": "Sampo",
+      "matchDepNames": [
+        "sampo",
+        "bruits/sampo",
+        "bruits/sampo/crates/sampo-github-action"
+      ],
+      "matchManagers": ["npm", "github-actions"]
     }
   ]
 }
