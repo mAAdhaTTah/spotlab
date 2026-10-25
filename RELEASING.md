@@ -4,7 +4,7 @@ For maintainers. Contributors only need `sampo add`; see "Releasing" in the [REA
 
 `.github/workflows/release.yml` runs on pushes to `main`. With changesets pending it opens or updates a release pull request (version bumps, lockfiles, `CHANGELOG.md`s). Merging that PR builds the packages, publishes `spotlab-range` to crates.io and `@spotlab/range` and `@spotlab/hand-matrix` to npm using OIDC trusted publishing (no stored tokens, npm provenance), tags each `<name>@<version>` and creates GitHub releases. Versions already on a registry are skipped.
 
-The Sampo CLI (`cargo install sampo --version 0.22.0 --locked`) matches the `sampo-core` bundled by the pinned action (`cargo-sampo-github-action-v0.20.0`). Keep them in step when bumping either.
+The Sampo CLI (`cargo install sampo --version 0.23.0 --locked`) matches the `sampo-core` bundled by the pinned action (`cargo-sampo-github-action-v0.21.0`). Keep them in step when bumping either.
 
 ## Setup
 

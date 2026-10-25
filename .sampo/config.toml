@@ -8,8 +8,9 @@ repository = "mAAdhaTTah/spotlab"
 
 [changelog]
 show_commit_hash = true
-# Off until the owner can be excluded from the thanks (bruits/sampo#340, spotlab#13).
-show_acknowledgments = false
+show_acknowledgments = true
+# Thank outside contributors, not the owner (both GitHub login and Git author name).
+exclude_acknowledgments = ["mAAdhaTTah", "James DiGioia"]
 
 [packages]
 ignore_unpublished = true
