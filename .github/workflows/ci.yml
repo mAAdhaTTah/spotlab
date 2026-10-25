@@ -50,6 +50,30 @@ jobs:
           cargo xtask codegen
           git diff --exit-code packages/range/src/generated/constants.ts
 
+  # Tests spotlab-range on its declared rust-version. rust-toolchain.toml pins the latest stable for
+  # everything else; setup-rust-toolchain's `rustup override` takes precedence over that pin.
+  msrv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read spotlab-range's rust-version
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' crates/spotlab-range/Cargo.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Rust ${{ steps.msrv.outputs.version }}
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - name: Test spotlab-range with every feature
+        run: cargo test -p spotlab-range --all-features --locked
+
+      - name: Check spotlab-range with no features
+        run: cargo check -p spotlab-range --no-default-features --locked
+
   # Builds its own wasm rather than consuming an artifact from rust-checks: the two jobs stay
   # independent and run in parallel, and a package failure is not masked by a crate failure.
   package-checks:
