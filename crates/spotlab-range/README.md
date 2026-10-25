@@ -44,6 +44,12 @@ shorthand: `X+` when it reaches the top (`QQ+`, `AJs+`), `HI-LO` otherwise
   default, because it pins a pre-release `specta` version; only consumers
   generating TypeScript bindings should pay that cost.
 
+## Minimum supported Rust version
+
+Rust 1.93, with every feature enabled; CI tests the crate on that version. The
+MSRV covers the `specta` feature: `specta`'s pre-release builds need 1.93 but
+do not declare a `rust-version`, so Cargo cannot warn about it.
+
 ## License
 
 MIT — see `LICENSE`.

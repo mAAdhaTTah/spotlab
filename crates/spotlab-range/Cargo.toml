@@ -2,6 +2,9 @@
 name = "spotlab-range"
 version = "0.3.0"
 edition.workspace = true
+# MSRV: keep in sync with the "Minimum supported Rust version" section of README.md. CI's msrv job
+# reads this value and tests against it.
+rust-version = "1.93"
 description = "A poker range-string parser and serializer: combo/hand grammar, canonical hand tokens, and weighted-range arithmetic"
 license.workspace = true
 repository.workspace = true
