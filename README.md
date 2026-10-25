@@ -77,7 +77,7 @@ packages are `spotlab-range` (crates.io), `@spotlab/range` and
 Every change that affects a published package needs a changeset:
 
 ```
-cargo install sampo --version 0.22.0 --locked   # once; or: pnpm dlx sampo@0.22.0 add
+cargo install sampo --version 0.23.0 --locked   # once; or: pnpm dlx sampo@0.23.0 add
 sampo add
 ```
 

@@ -54,7 +54,7 @@ jobs:
         uses: rust-lang/crates-io-auth-action@v1
 
       - name: Open the release PR or publish
-        uses: bruits/sampo/crates/sampo-github-action@cargo-sampo-github-action-v0.20.0
+        uses: bruits/sampo/crates/sampo-github-action@cargo-sampo-github-action-v0.21.0
         with:
           command: auto
           create-github-release: true
