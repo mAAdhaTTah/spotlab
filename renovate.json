@@ -6,6 +6,9 @@
   "configMigration": true,
   "prHourlyLimit": 0,
   "minimumReleaseAge": "3 days",
+  "gitIgnoredAuthors": [
+    "41898283+github-actions[bot]@users.noreply.github.com"
+  ],
   "packageRules": [
     {
       "groupName": "specta packages",
