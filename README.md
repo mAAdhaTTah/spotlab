@@ -77,8 +77,8 @@ packages are `spotlab-range` (crates.io), `@spotlab/range` and
 Every change that affects a published package needs a changeset:
 
 ```
-cargo install sampo --version 0.23.0 --locked   # once; or: pnpm dlx sampo@0.23.0 add
-sampo add
+pnpm install   # once; the pinned Sampo CLI is a root devDependency
+pnpm sampo add
 ```
 
 This writes a markdown file to `.sampo/changesets/` naming each affected package
