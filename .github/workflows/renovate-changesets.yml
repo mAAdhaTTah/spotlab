@@ -1,0 +1,69 @@
+name: Renovate changesets
+
+# Commits a patch changeset to Renovate PRs that update a dependency shipped to users, so the
+# update appears in the changelog. Which manifests and dependency tables count is listed in
+# .github/scripts/renovate-changesets.py; see RELEASING.md.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write # push the changeset commit to the Renovate branch
+
+concurrency:
+  group: renovate-changesets-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changesets:
+    # Only Renovate's own pushes, so a maintainer's edit to a changeset on the PR stands.
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.sender.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0 # the script diffs the manifests against the merge base with main
+
+      # Same CLI version as release.yml's action bundles; see RELEASING.md.
+      - name: Install Sampo
+        run: |
+          gh release download cargo-sampo-v0.23.0 --repo bruits/sampo \
+            --pattern sampo-0.23.0-x86_64-unknown-linux-gnu.tar.gz --dir "$RUNNER_TEMP"
+          echo "d526913cd5283ec18ac280b515916f44cd0c51a3a22dd780ddce791235354ed6  $RUNNER_TEMP/sampo-0.23.0-x86_64-unknown-linux-gnu.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/sampo-0.23.0-x86_64-unknown-linux-gnu.tar.gz" -C "$RUNNER_TEMP/bin" sampo
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # ubuntu-latest's python3 is 3.12, which has tomllib.
+      - name: Add changesets for the manifest changes
+        run: python3 .github/scripts/renovate-changesets.py "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
+      # Renovate ignores commits by this author (gitIgnoredAuthors), so it keeps updating the
+      # branch; each update rebuilds the branch from main, dropping this commit, and the resulting
+      # synchronize run adds it back. Pushes made with GITHUB_TOKEN don't trigger other
+      # workflows, so CI doesn't rerun on this commit.
+      - name: Commit and push
+        run: |
+          git add -A .sampo/changesets
+          if git diff --cached --quiet; then
+            echo "Changesets already up to date"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898283+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Add changeset for $BRANCH"
+          git push origin "HEAD:$BRANCH"
+        env:
+          BRANCH: ${{ github.head_ref }}
