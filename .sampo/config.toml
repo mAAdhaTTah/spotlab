@@ -10,7 +10,7 @@ repository = "mAAdhaTTah/spotlab"
 show_commit_hash = true
 show_acknowledgments = true
 # Thank outside contributors, not the owner (both GitHub login and Git author name).
-exclude_acknowledgments = ["mAAdhaTTah", "James DiGioia"]
+exclude_acknowledgments = ["mAAdhaTTah", "James DiGioia", "renovate[bot]"]
 
 [packages]
 ignore_unpublished = true
