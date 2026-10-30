@@ -1,5 +1,12 @@
 # spotlab-range
 
+## 0.3.1 — 2026-10-30
+
+### Patch changes
+
+- [b984571](https://github.com/mAAdhaTTah/spotlab/commit/b98457177a509d1bc57a2a881ed1e241d7177a12) Declare a minimum supported Rust version (MSRV) of 1.93 via `rust-version`, covering every feature. Cargo now reports a clear error on older toolchains instead of failing partway through the build.
+- [ffb0689](https://github.com/mAAdhaTTah/spotlab/commit/ffb0689502aba48de214d8441381eddac3f0dfce) Update Rust crate `specta` from `=2.0.0-rc.25` to `=2.0.0-rc.27` and Rust crate `specta-typescript` from `=0.0.12` to `=0.0.14`.
+
 ## 0.3.0 — 2026-10-17
 
 ### Minor changes
