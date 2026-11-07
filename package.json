@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "prettier": "^3.8.1",
-    "sampo": "0.23.0"
+    "sampo": "0.24.0"
   },
   "devEngines": {
     "runtime": {
